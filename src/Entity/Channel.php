@@ -19,6 +19,7 @@ use Symfony\Component\Uid\Uuid;
 use ApiPlatform\Metadata\ApiFilter;
 use ApiPlatform\Doctrine\Orm\Filter\OrderFilter;
 use ApiPlatform\Doctrine\Orm\Filter\SearchFilter;
+use ApiPlatform\Doctrine\Orm\Filter\BooleanFilter;
 use App\Filter\GlobalSearchFilter;
 
 #[ORM\Entity(repositoryClass: ChannelRepository::class)]
@@ -38,7 +39,8 @@ use App\Filter\GlobalSearchFilter;
 )]
 #[ApiFilter(OrderFilter::class, properties: ['name', 'createdAt', 'isActive', 'category.name', 'viewCount', 'isWorking', 'language'])]
 #[ApiFilter(GlobalSearchFilter::class)]
-#[ApiFilter(SearchFilter::class, properties: ['name' => 'partial', 'category.name' => 'partial', 'language' => 'exact'])]
+#[ApiFilter(SearchFilter::class, properties: ['name' => 'partial', 'category.name' => 'partial', 'language' => 'exact', 'category' => 'exact'])]
+#[ApiFilter(BooleanFilter::class, properties: ['isActive', 'isGeoBlocked', 'isWorking'])]
 class Channel
 {
     #[ORM\Id]
