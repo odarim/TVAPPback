@@ -95,6 +95,7 @@ class Channel
     private Collection $streams;
 
     #[ORM\ManyToMany(targetEntity: Package::class, mappedBy: 'channels')]
+    #[Groups(['channel:read', 'channel:write'])]
     private Collection $packages;
 
     #[ORM\Column(options: ['default' => true])]
