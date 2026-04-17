@@ -11,7 +11,6 @@ class PapiPaymentService
     public function __construct(
         private HttpClientInterface $httpClient,
         private string $papiApiKey,        // Inject from .env: PAPI_API_KEY
-        private string $appBaseUrl,        // Inject from .env: APP_BASE_URL
     ) {}
 
     /**
@@ -25,6 +24,9 @@ class PapiPaymentService
         string $clientName,
         string $reference,
         string $description,
+        string $successUrl,
+        string $failureUrl,
+        string $notificationUrl,
         int $validDurationHours = 2,
     ): array {
         $response = $this->httpClient->request('POST', self::PAPI_BASE_URL . '/payment-links', [
@@ -38,9 +40,9 @@ class PapiPaymentService
                 'clientName'      => $clientName,
                 'reference'       => $reference,
                 'description'     => $description,
-                'successUrl'      => $this->appBaseUrl . '/payment/success?ref=' . $reference,
-                'failureUrl'      => $this->appBaseUrl . '/payment/failure?ref=' . $reference,
-                'notificationUrl' => $this->appBaseUrl . '/api/payment/notification',
+                'successUrl'      => $successUrl,
+                'failureUrl'      => $failureUrl,
+                'notificationUrl' => $notificationUrl,
             ],
         ]);
 
@@ -48,6 +50,7 @@ class PapiPaymentService
             throw new \RuntimeException('Papi API error: ' . $response->getContent(false));
         }
 
-        return $response->toArray();
+        $result = $response->toArray();
+        return $result['data'] ?? $result;
     }
 }

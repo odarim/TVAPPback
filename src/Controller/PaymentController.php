@@ -12,18 +12,21 @@ use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Routing\Annotation\Route;
+use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 
+#[Route('/api/payment')]
 class PaymentController extends AbstractController
 {
     /**
      * Step 1: User selects a package.
      * Creates a PendingPayment record, calls Papi, and returns the payment redirect URL.
      */
-    #[Route('/api/payment/checkout', name: 'api_payment_checkout', methods: ['POST'])]
+    #[Route('/checkout', name: 'api_payment_checkout', methods: ['POST'])]
     public function checkout(
         Request $request,
         EntityManagerInterface $em,
-        PapiPaymentService $papi
+        PapiPaymentService $papi,
+        UrlGeneratorInterface $urlGenerator
     ): JsonResponse {
         $user = $this->getUser();
         if (!$user) {
@@ -60,11 +63,17 @@ class PaymentController extends AbstractController
 
         // Ask Papi to create a hosted payment session
         try {
+            $frontendUrl = $request->headers->get('Origin', 'http://localhost:5173');
+            $notificationUrl = $urlGenerator->generate('api_payment_notification', [], UrlGeneratorInterface::ABSOLUTE_URL);
+
             $papiData = $papi->createPaymentLink(
                 amount: (float) $package->getPrice(),
                 clientName: $user->getEmail(),
                 reference: $reference,
                 description: 'Abonnement ' . $package->getName(),
+                successUrl: $frontendUrl . '/payment/success?ref=' . $reference,
+                failureUrl: $frontendUrl . '/payment/failure?ref=' . $reference,
+                notificationUrl: $notificationUrl
             );
         } catch (\RuntimeException $e) {
             // Roll back the pending record if Papi is unreachable
@@ -85,7 +94,7 @@ class PaymentController extends AbstractController
      * This is the ONLY authoritative place where subscriptions are activated.
      * This route is PUBLIC (no JWT required) — see security.yaml.
      */
-    #[Route('/api/payment/notification', name: 'api_payment_notification', methods: ['POST'])]
+    #[Route('/notification', name: 'api_payment_notification', methods: ['POST'])]
     public function notification(
         Request $request,
         EntityManagerInterface $em,
