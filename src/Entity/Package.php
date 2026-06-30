@@ -54,6 +54,10 @@ class Package
     #[Groups(['package:read', 'package:write'])]
     private ?int $maxDevices = 1;
 
+    #[ORM\Column(options: ['default' => 1])]
+    #[Groups(['package:read', 'package:write'])]
+    private ?int $maxConnections = 1;
+
     #[ORM\Column]
     #[Groups(['package:read', 'package:write'])]
     private ?bool $isActive = true;
@@ -119,6 +123,18 @@ class Package
     public function setMaxDevices(int $maxDevices): static
     {
         $this->maxDevices = $maxDevices;
+
+        return $this;
+    }
+
+    public function getMaxConnections(): ?int
+    {
+        return $this->maxConnections;
+    }
+
+    public function setMaxConnections(int $maxConnections): static
+    {
+        $this->maxConnections = $maxConnections;
 
         return $this;
     }

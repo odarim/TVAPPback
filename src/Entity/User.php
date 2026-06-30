@@ -21,6 +21,7 @@ use ApiPlatform\Metadata\Post;
 use ApiPlatform\Metadata\Put;
 use ApiPlatform\Metadata\Patch;
 use ApiPlatform\Metadata\Delete;
+use App\Entity\ActiveSession;
 
 #[ORM\Entity(repositoryClass: UserRepository::class)]
 #[ORM\Table(name: '`user`')]
@@ -81,16 +82,28 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\OneToMany(mappedBy: 'user', targetEntity: Device::class, orphanRemoval: true)]
     private Collection $devices;
 
+    #[ORM\Column(nullable: true)]
+    #[Groups(['user:read', 'user:write'])]
+    private ?int $maxDevicesOverride = null;
+
+    #[ORM\Column(nullable: true)]
+    #[Groups(['user:read', 'user:write'])]
+    private ?int $maxConnectionsOverride = null;
+
     #[ORM\ManyToMany(targetEntity: Channel::class)]
     #[ORM\JoinTable(name: 'user_favorites')]
     #[Groups(['user:read', 'user:write'])]
     private Collection $favorites;
+
+    #[ORM\OneToMany(mappedBy: 'user', targetEntity: ActiveSession::class, orphanRemoval: true)]
+    private Collection $activeSessions;
 
     public function __construct()
     {
         $this->subscriptions = new ArrayCollection();
         $this->devices = new ArrayCollection();
         $this->favorites = new ArrayCollection();
+        $this->activeSessions = new ArrayCollection();
     }
 
     public function getId(): ?Uuid
@@ -279,6 +292,59 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function removeFavorite(Channel $channel): static
     {
         $this->favorites->removeElement($channel);
+
+        return $this;
+    }
+
+    public function getMaxDevicesOverride(): ?int
+    {
+        return $this->maxDevicesOverride;
+    }
+
+    public function setMaxDevicesOverride(?int $maxDevicesOverride): static
+    {
+        $this->maxDevicesOverride = $maxDevicesOverride;
+
+        return $this;
+    }
+
+    public function getMaxConnectionsOverride(): ?int
+    {
+        return $this->maxConnectionsOverride;
+    }
+
+    public function setMaxConnectionsOverride(?int $maxConnectionsOverride): static
+    {
+        $this->maxConnectionsOverride = $maxConnectionsOverride;
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, ActiveSession>
+     */
+    public function getActiveSessions(): Collection
+    {
+        return $this->activeSessions;
+    }
+
+    public function addActiveSession(ActiveSession $session): static
+    {
+        if (!$this->activeSessions->contains($session)) {
+            $this->activeSessions->add($session);
+            $session->setUser($this);
+        }
+
+        return $this;
+    }
+
+    public function removeActiveSession(ActiveSession $session): static
+    {
+        if ($this->activeSessions->removeElement($session)) {
+            if ($session->getUser() === $this) {
+                $session->setUser(null);
+            }
+        }
 
         return $this;
     }
