@@ -1,4 +1,6 @@
 {
+    "name": "odarim/tvapp-backend",
+    "description": "StreamPulse (TVAPP) — Symfony + API Platform backend for the TV streaming application.",
     "type": "project",
     "license": "proprietary",
     "minimum-stability": "stable",
