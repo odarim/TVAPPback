@@ -1,5 +1,5 @@
 api_platform:
-    title: StreamPulse API
+    title: NEXUSTV API
     version: 1.0.0
     show_webby: true
     enable_swagger_ui: true

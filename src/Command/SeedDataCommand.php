@@ -33,7 +33,7 @@ class SeedDataCommand extends Command
 
         // Create Admin User
         $user = new User();
-        $user->setEmail('admin@streampulse.com');
+        $user->setEmail('admin@nexusTV.com');
         $user->setFullName('Admin User');
         $user->setRoles(['ROLE_ADMIN']);
         $user->setPassword($this->passwordHasher->hashPassword($user, 'admin123'));
