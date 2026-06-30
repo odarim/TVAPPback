@@ -25,3 +25,8 @@ services:
     App\Service\PapiPaymentService:
         arguments:
             $papiApiKey: '%env(PAPI_API_KEY)%'
+
+    App\Service\TmdbService:
+        arguments:
+            $tmdbBearerToken: '%env(TMDB_BEARER_TOKEN)%'
+            $tmdbBaseUrl: '%env(TMDB_BASE_URL)%'
