@@ -1,0 +1,70 @@
+# Render Blueprint for the StreamPulse (TVAPP) Symfony backend.
+# Docs: https://render.com/docs/blueprint-spec
+#
+# Deploy by connecting this repo to Render and choosing "New > Blueprint",
+# or let the GitHub Actions workflow trigger deploys via a Deploy Hook.
+
+databases:
+  - name: tvapp-db
+    databaseName: tv_streaming
+    user: tvapp
+    plan: free                # upgrade to "basic" or higher for production
+    postgresMajorVersion: "16"
+
+services:
+  - type: web
+    name: tvapp-backend
+    runtime: docker
+    plan: free                # upgrade for production traffic / persistent disk
+    region: frankfurt         # pick the region closest to your users
+    branch: main
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api      # API Platform entrypoint (public, returns 200)
+
+    # Run migrations once, before traffic is shifted to the new instance.
+    # (Available on paid plans. On the free plan the entrypoint runs them
+    #  automatically at container start instead — both are idempotent.)
+    # preDeployCommand: "php bin/console doctrine:migrations:migrate --no-interaction --allow-no-migration"
+
+    envVars:
+      - key: APP_ENV
+        value: prod
+      - key: APP_DEBUG
+        value: "0"
+
+      # 32+ char application secret — generated and stored by Render.
+      - key: APP_SECRET
+        generateValue: true
+
+      # Database connection injected from the managed PostgreSQL instance.
+      # The entrypoint appends `serverVersion` automatically.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: tvapp-db
+          property: connectionString
+
+      # JWT signing passphrase — keep this stable so issued tokens stay valid.
+      - key: JWT_PASSPHRASE
+        generateValue: true
+      - key: JWT_SECRET_KEY
+        value: "%kernel.project_dir%/config/jwt/private.pem"
+      - key: JWT_PUBLIC_KEY
+        value: "%kernel.project_dir%/config/jwt/public.pem"
+
+      # CORS: lock this down to your real frontend origin(s) before going live.
+      - key: CORS_ALLOW_ORIGIN
+        value: "^https?://(localhost|127\\.0\\.0\\.1)(:[0-9]+)?$"
+
+      # PAPI payment provider key — set the real value in the Render dashboard.
+      - key: PAPI_API_KEY
+        sync: false
+
+      # Public base URL of this service (no trailing slash). Set after the
+      # service URL is known, e.g. https://tvapp-backend.onrender.com
+      - key: APP_BASE_URL
+        sync: false
+
+      # Run the one-off data seeder on first boot only, then set back to false.
+      - key: RUN_SEED
+        value: "false"

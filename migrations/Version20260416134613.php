@@ -26,7 +26,10 @@ final class Version20260416134613 extends AbstractMigration
         $this->addSql('CREATE INDEX IDX_A647739CF44CABFF ON pending_payment (package_id)');
         $this->addSql('ALTER TABLE pending_payment ADD CONSTRAINT FK_A647739CA76ED395 FOREIGN KEY (user_id) REFERENCES "user" (id) NOT DEFERRABLE');
         $this->addSql('ALTER TABLE pending_payment ADD CONSTRAINT FK_A647739CF44CABFF FOREIGN KEY (package_id) REFERENCES package (id) NOT DEFERRABLE');
-        $this->addSql('ALTER TABLE channel ALTER is_working SET NOT NULL');
+        // The is_working column was never created by an earlier migration (dev DBs
+        // were built with `doctrine:schema:update --force`), so create it here
+        // instead of only flipping its NOT NULL constraint.
+        $this->addSql('ALTER TABLE channel ADD is_working BOOLEAN DEFAULT true NOT NULL');
     }
 
     public function down(Schema $schema): void
@@ -35,6 +38,6 @@ final class Version20260416134613 extends AbstractMigration
         $this->addSql('ALTER TABLE pending_payment DROP CONSTRAINT FK_A647739CA76ED395');
         $this->addSql('ALTER TABLE pending_payment DROP CONSTRAINT FK_A647739CF44CABFF');
         $this->addSql('DROP TABLE pending_payment');
-        $this->addSql('ALTER TABLE channel ALTER is_working DROP NOT NULL');
+        $this->addSql('ALTER TABLE channel DROP is_working');
     }
 }

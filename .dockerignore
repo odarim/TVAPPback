@@ -1,0 +1,33 @@
+# Version control / CI
+.git
+.github
+.gitignore
+
+# Local environment overrides and secrets (NEVER bake these into the image)
+.env.local
+.env.*.local
+.env.dev
+config/jwt/*.pem
+config/secrets/prod/prod.decrypt.private.php
+
+# Generated / installed artifacts (rebuilt inside the image)
+vendor/
+var/
+public/bundles/
+node_modules/
+
+# Dev-only tooling and data
+scrap/
+iptv-checker.php
+compose.yaml
+compose.override.yaml
+
+# Docker / docs (not needed at runtime)
+Dockerfile
+.dockerignore
+*.md
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
