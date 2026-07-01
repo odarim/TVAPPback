@@ -39,6 +39,13 @@ RUN install-php-extensions \
         opcache \
         zip
 
+# Strip the Linux file capability (cap_net_bind_service) that the base image
+# sets on the frankenphp binary. Render runs containers under a restricted
+# security profile (no-new-privileges) that refuses to exec a binary carrying
+# file capabilities, failing with "exec: Operation not permitted" (status 126).
+# We bind to the unprivileged $PORT (10000), so the capability is unnecessary.
+RUN setcap -r /usr/local/bin/frankenphp || true
+
 # Production PHP configuration.
 COPY docker/php/app.ini ${PHP_INI_DIR}/conf.d/zz-app.ini
 
