@@ -19,7 +19,7 @@ use Symfony\Component\Routing\Annotation\Route;
  */
 class HealthController extends AbstractController
 {
-    #[Route('/health', name: 'app_health', methods: ['GET'])]
+    #[Route('/api/health', name: 'app_health', methods: ['GET'])]
     public function health(Connection $connection): JsonResponse
     {
         $checks = [];
