@@ -2,9 +2,13 @@ doctrine:
     dbal:
         url: '%env(resolve:DATABASE_URL)%'
 
-        # IMPORTANT: You MUST configure your server version,
-        # either here or in the DATABASE_URL env var (see .env file)
-        #server_version: '16'
+        # Fallback platform version used only when DATABASE_URL has no
+        # `serverVersion` query param. A serverVersion in the URL always wins
+        # (e.g. .env's value, or the one the Docker entrypoint appends). This
+        # keeps local commands working with bare connection strings (Render /
+        # Supabase URLs often omit serverVersion). 15/16/17 all map to the same
+        # modern PostgreSQL platform, so the exact value here is not critical.
+        server_version: '16'
 
         profiling_collect_backtrace: '%kernel.debug%'
         use_savepoints: true

@@ -20,7 +20,7 @@ services:
     branch: main
     dockerfilePath: ./Dockerfile
     dockerContext: .
-    healthCheckPath: /api      # API Platform entrypoint (public, returns 200)
+    healthCheckPath: /health   # public health endpoint (App\Controller\HealthController)
 
     # Run migrations once, before traffic is shifted to the new instance.
     # (Available on paid plans. On the free plan the entrypoint runs them
@@ -37,12 +37,29 @@ services:
       - key: APP_SECRET
         generateValue: true
 
-      # Database connection injected from the managed PostgreSQL instance.
-      # The entrypoint appends `serverVersion` automatically.
-      - key: DATABASE_URL
+      # --- Database provider switch --------------------------------------
+      # Flip between Supabase and the Render-managed Postgres with no code
+      # change. The entrypoint reads DB_PROVIDER and picks the matching URL,
+      # then normalizes it (sslmode + serverVersion). Both are plain Postgres.
+      - key: DB_PROVIDER
+        value: supabase          # set to "render" to use the Render database
+
+      # Render-managed PostgreSQL connection (kept as a fallback option).
+      - key: RENDER_DATABASE_URL
         fromDatabase:
           name: tvapp-db
           property: connectionString
+
+      # Supabase "Session pooler" connection string (port 5432). Paste it in the
+      # Render dashboard — Supabase > Project Settings > Database > Connect >
+      # "Session pooler". The entrypoint forces sslmode=require, e.g.:
+      # postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres
+      - key: SUPABASE_DATABASE_URL
+        sync: false
+
+      # Optional override; defaults to 17 (Supabase) / 16 (Render) in the entrypoint.
+      # - key: DATABASE_SERVER_VERSION
+      #   value: "17"
 
       # JWT signing passphrase — keep this stable so issued tokens stay valid.
       - key: JWT_PASSPHRASE

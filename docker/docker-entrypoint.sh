@@ -4,16 +4,58 @@ set -e
 cd /app
 
 # ---------------------------------------------------------------------------
+# Select the database provider.
+#
+# DB_PROVIDER switches the connection target without any code change — both are
+# plain PostgreSQL, so the app stays 100% Postgres-compatible:
+#   DB_PROVIDER=supabase -> uses $SUPABASE_DATABASE_URL  (Session pooler URL)
+#   DB_PROVIDER=render   -> uses $RENDER_DATABASE_URL    (Render injects this)
+#
+# An explicitly-set DATABASE_URL (local dev, docker compose, .env) always wins
+# and skips this selection entirely.
+# ---------------------------------------------------------------------------
+# Track which provider we actually select here. Left empty when DATABASE_URL
+# was supplied explicitly, so we never rewrite a user-provided URL below.
+_selected_provider=""
+if [ -z "$DATABASE_URL" ]; then
+	_selected_provider="${DB_PROVIDER:-render}"
+	case "$_selected_provider" in
+		supabase) export DATABASE_URL="$SUPABASE_DATABASE_URL" ;;
+		render)   export DATABASE_URL="$RENDER_DATABASE_URL" ;;
+		*)        echo "[entrypoint] ERROR: unknown DB_PROVIDER '${DB_PROVIDER}' (expected 'supabase' or 'render')."; exit 1 ;;
+	esac
+
+	if [ -z "$DATABASE_URL" ]; then
+		echo "[entrypoint] ERROR: DB_PROVIDER='${_selected_provider}' selected but its connection URL is empty."
+		echo "[entrypoint]        Set SUPABASE_DATABASE_URL / RENDER_DATABASE_URL, or set DATABASE_URL directly."
+		exit 1
+	fi
+fi
+
+# ---------------------------------------------------------------------------
 # Normalize DATABASE_URL.
-# Render's managed PostgreSQL exposes a connection string WITHOUT a
-# `serverVersion` query parameter, which Doctrine/DBAL needs to pick the right
-# platform without an extra round-trip. Append it (and a charset) if missing.
+#  * Supabase requires TLS -> ensure sslmode=require. Applied ONLY when we
+#    selected the Supabase provider here, never to a user-supplied URL (a local
+#    non-SSL Postgres would break).
+#  * Doctrine/DBAL needs a `serverVersion` to pick the platform without an extra
+#    round-trip; append it if missing. Default 17 for Supabase, 16 otherwise
+#    (both resolve to the modern PostgreSQL platform, so a mismatch is harmless).
 # ---------------------------------------------------------------------------
 if [ -n "$DATABASE_URL" ]; then
+	if [ "$_selected_provider" = "supabase" ]; then
+		case "$DATABASE_URL" in
+			*sslmode=*) : ;; # already specified, leave untouched
+			*\?*) export DATABASE_URL="${DATABASE_URL}&sslmode=require" ;;
+			*)    export DATABASE_URL="${DATABASE_URL}?sslmode=require" ;;
+		esac
+	fi
+
+	_default_sv=16
+	[ "$_selected_provider" = "supabase" ] && _default_sv=17
 	case "$DATABASE_URL" in
 		*serverVersion=*) : ;; # already specified, leave untouched
-		*\?*) export DATABASE_URL="${DATABASE_URL}&serverVersion=${DATABASE_SERVER_VERSION:-16}&charset=utf8" ;;
-		*)    export DATABASE_URL="${DATABASE_URL}?serverVersion=${DATABASE_SERVER_VERSION:-16}&charset=utf8" ;;
+		*\?*) export DATABASE_URL="${DATABASE_URL}&serverVersion=${DATABASE_SERVER_VERSION:-$_default_sv}&charset=utf8" ;;
+		*)    export DATABASE_URL="${DATABASE_URL}?serverVersion=${DATABASE_SERVER_VERSION:-$_default_sv}&charset=utf8" ;;
 	esac
 fi
 
