@@ -40,22 +40,33 @@ class ChannelImportService
  
         foreach ($data as $item) {
             try {
-                if (empty($item['name']) || empty($item['nanoid'])) {
+                $nanoid = $item['nanoid'] ?? null;
+                if (empty($nanoid) || empty($item['name'])) {
                     $stats['errors']++;
                     continue;
                 }
- 
-                $channel = $this->channelRepository->findOneBy(['nanoid' => $item['nanoid']]);
-                $isNew = false;
- 
-                if (!$channel) {
+
+                $baseSlug = $this->slugger->slug($item['name'])->lower();
+
+                $channel = $this->channelRepository->createQueryBuilder('c')
+                    ->where('c.slug LIKE :slugPrefix')
+                    ->setParameter('slugPrefix', $baseSlug . '%')
+                    ->getQuery()
+                    ->setMaxResults(1)
+                    ->getOneOrNullResult();
+
+                $isNew = ($channel === null);
+
+                if ($isNew) {
                     $channel = new Channel();
-                    $channel->setNanoid($item['nanoid']);
-                    $isNew = true;
+                    $channel->setNanoid($nanoid);
+                    $channel->setSlug($baseSlug . '-' . substr($nanoid, -8));
+                    $stats['created']++;
+                } else {
+                    $stats['updated']++;
                 }
- 
+
                 $channel->setName($item['name']);
-                $channel->setSlug($this->slugger->slug($item['name'])->lower());
                 $channel->setLanguage($item['language'] ?? 'eng');
                 $channel->setCountry($item['country'] ?? 'us');
                 $channel->setIsGeoBlocked($item['isGeoBlocked'] ?? false);

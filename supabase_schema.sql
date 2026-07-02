@@ -63,7 +63,7 @@ CREATE TABLE IF NOT EXISTS channel (
     name           VARCHAR(255) NOT NULL,
     slug           VARCHAR(255) DEFAULT NULL,
     language       VARCHAR(10)  DEFAULT NULL,
-    country        VARCHAR(2)   DEFAULT NULL,
+    country        VARCHAR(100) DEFAULT NULL,
     is_geo_blocked BOOLEAN      NOT NULL,
     logo           VARCHAR(255) DEFAULT NULL,
     is_active      BOOLEAN      NOT NULL,
@@ -199,7 +199,8 @@ INSERT INTO doctrine_migration_versions (version, executed_at, execution_time) V
     ('DoctrineMigrations\Version20260220063748', NOW(), 0),
     ('DoctrineMigrations\Version20260220101957', NOW(), 0),
     ('DoctrineMigrations\Version20260416134613', NOW(), 0),
-    ('DoctrineMigrations\Version20260630000000', NOW(), 0)
+    ('DoctrineMigrations\Version20260630000000', NOW(), 0),
+    ('DoctrineMigrations\Version20260702000000', NOW(), 0)
 ON CONFLICT (version) DO NOTHING;
 
 COMMIT;

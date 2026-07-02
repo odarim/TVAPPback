@@ -39,7 +39,7 @@ use App\Filter\GlobalSearchFilter;
 )]
 #[ApiFilter(OrderFilter::class, properties: ['name', 'createdAt', 'isActive', 'category.name', 'viewCount', 'isWorking', 'language'])]
 #[ApiFilter(GlobalSearchFilter::class)]
-#[ApiFilter(SearchFilter::class, properties: ['name' => 'partial', 'category.name' => 'partial', 'language' => 'exact', 'category' => 'exact'])]
+#[ApiFilter(SearchFilter::class, properties: ['name' => 'partial', 'category.name' => 'partial', 'language' => 'exact', 'category' => 'exact', 'streams.type' => 'exact'])]
 #[ApiFilter(BooleanFilter::class, properties: ['isActive', 'isGeoBlocked', 'isWorking'])]
 class Channel
 {
@@ -66,7 +66,7 @@ class Channel
     #[Groups(['channel:read', 'channel:write'])]
     private ?string $language = null;
 
-    #[ORM\Column(length: 2, nullable: true)]
+    #[ORM\Column(length: 100, nullable: true)]
     #[Groups(['channel:read', 'channel:write'])]
     private ?string $country = null;
 
