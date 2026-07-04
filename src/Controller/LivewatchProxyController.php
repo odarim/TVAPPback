@@ -6,13 +6,12 @@ use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 use Symfony\Component\Routing\Annotation\Route;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
  * Full transparent HLS proxy for LiveWatch streams.
- * 
+ *
  * Flow:
  * 1. VideoPlayer calls /api/livewatch-token/{id}        → gets the resolved proxy_url
  * 2. VideoPlayer calls /api/livewatch-hls?url=<encoded> → gets the m3u8 manifest with rewritten URLs
@@ -30,6 +29,7 @@ class LivewatchProxyController extends AbstractController
 
     public function __construct(
         private readonly HttpClientInterface $httpClient,
+        private readonly string $backendBaseUrl, // bound in services.yaml from %env(BACKEND_BASE_URL)%
     ) {}
 
     /**
@@ -51,8 +51,9 @@ class LivewatchProxyController extends AbstractController
                     ? $data['proxy_url']
                     : 'https://livewatch.top' . $data['proxy_url'];
 
-                // Return our own proxy URL instead of the direct livewatch URL
-                $data['proxy_url'] = '/api/livewatch-hls?url=' . urlencode($absoluteUrl);
+                // Return our own ABSOLUTE proxy URL (backend domain), not a relative one,
+                // since the frontend origin (Vercel) is different from the backend origin (Render).
+                $data['proxy_url'] = rtrim($this->backendBaseUrl, '/') . '/api/livewatch-hls?url=' . urlencode($absoluteUrl);
             }
 
             return $this->json($data);
@@ -115,7 +116,7 @@ class LivewatchProxyController extends AbstractController
         $baseUrlParts = parse_url($baseUrl);
         $baseDir      = $baseUrlParts['scheme'] . '://' . $baseUrlParts['host'] . rtrim(dirname($baseUrlParts['path'] ?? '/'), '/') . '/';
 
-        $lines   = explode("\n", $content);
+        $lines     = explode("\n", $content);
         $rewritten = [];
 
         foreach ($lines as $line) {
@@ -142,7 +143,8 @@ class LivewatchProxyController extends AbstractController
     }
 
     /**
-     * Converts a segment URL (relative or absolute) into a proxied /api/livewatch-hls?url=... URL.
+     * Converts a segment URL (relative or absolute) into a proxied
+     * {backendBaseUrl}/api/livewatch-hls?url=... URL.
      */
     private function toProxyUrl(string $url, string $baseDir): string
     {
@@ -155,6 +157,6 @@ class LivewatchProxyController extends AbstractController
             $absoluteUrl = $baseDir . $url;
         }
 
-        return '/api/livewatch-hls?url=' . urlencode($absoluteUrl);
+        return rtrim($this->backendBaseUrl, '/') . '/api/livewatch-hls?url=' . urlencode($absoluteUrl);
     }
 }

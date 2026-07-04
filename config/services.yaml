@@ -28,3 +28,7 @@ services:
     App\Service\PapiPaymentService:
         arguments:
             $papiApiKey: '%env(PAPI_API_KEY)%'
+
+    App\Controller\LivewatchProxyController:
+        arguments:
+            $backendBaseUrl: '%env(BACKEND_BASE_URL)%'
