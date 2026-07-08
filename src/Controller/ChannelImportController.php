@@ -108,5 +108,28 @@ class ChannelImportController extends AbstractController
             return $this->json(['error' => 'Merge failed: ' . $e->getMessage()], 500);
         }
     }
+
+    /**
+     * Backfill/fix the language column on every channel, derived from its country.
+     * By default only fills in channels missing a language; pass
+     * { "overwrite_all": true } in the request body to recompute all of them.
+     */
+    #[Route('/channel/backfill-language', name: 'admin_channel_backfill_language', methods: ['POST'])]
+    public function backfillLanguage(Request $request): JsonResponse
+    {
+        try {
+            $data = json_decode($request->getContent(), true) ?? [];
+            $overwriteAll = (bool) ($data['overwrite_all'] ?? false);
+
+            $stats = $this->livewatchSyncService->backfillLanguages($overwriteAll);
+
+            return $this->json([
+                'message' => 'Language backfill complete',
+                'stats'   => $stats,
+            ]);
+        } catch (\Throwable $e) {
+            return $this->json(['error' => 'Backfill failed: ' . $e->getMessage()], 500);
+        }
+    }
 }
 

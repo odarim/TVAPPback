@@ -9,6 +9,7 @@ use App\Repository\CategoryRepository;
 use App\Repository\ChannelRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
+use App\Service\CountryLanguageMapper;
 
 /**
  * Fetches all channel data from the livewatch.top public API and upserts it
@@ -144,9 +145,21 @@ class LivewatchSyncService
             }
 
             $channel->setName($name);
-            $channel->setCountry($country);
             $channel->setIsActive(true);
             $channel->setIsWorking(true);
+
+            // Derive language from the RAW country value first (before we
+            // normalize it below), only if it isn't already set, so manual
+            // admin overrides aren't clobbered on re-sync. getLanguageCode()
+            // always returns a 3-letter ISO 639-2 code, falling back to
+            // 'und' for anything unrecognized (e.g. "Balkans").
+            if (!$channel->getLanguage()) {
+                $channel->setLanguage(CountryLanguageMapper::getLanguageCode($country));
+            }
+
+            // Store country as a clean, proper full name (e.g. "us"/"Arabia"/
+            // "GERMANY" all normalize to "United States"/"Saudi Arabia"/"Germany")
+            $channel->setCountry(CountryLanguageMapper::getFullCountryName($country));
 
             // Assign first matching category
             $assignedCat = null;
@@ -195,6 +208,63 @@ class LivewatchSyncService
         }
 
         $this->em->flush();
+
+        return $stats;
+    }
+
+    /**
+     * Bulk-fixes the language AND country columns on every existing channel:
+     * language is re-derived from country, and country is normalized to a
+     * clean full name (e.g. "us" / "GERMANY" / "Arabia" -> "United States" /
+     * "Germany" / "Saudi Arabia"). Used by the admin "Fix Languages" button
+     * to backfill channels imported before these mappings existed, or that
+     * ended up with an unrecognized/inconsistent country value.
+     *
+     * @param bool $overwriteAll If true, replaces every channel's language
+     *                           (including ones already set). Country is
+     *                           always normalized regardless of this flag,
+     *                           since it's a pure formatting fix, not a
+     *                           judgment call like language inference.
+     * @return array{checked: int, language_updated: int, country_updated: int}
+     */
+    public function backfillLanguages(bool $overwriteAll = false): array
+    {
+        $stats = ['checked' => 0, 'language_updated' => 0, 'country_updated' => 0];
+        $batchCount = 0;
+
+        // iterate() streams results instead of loading everything into memory at once
+        foreach ($this->channelRepository->createQueryBuilder('c')->getQuery()->toIterable() as $channel) {
+            $stats['checked']++;
+            $originalCountry = $channel->getCountry();
+
+            $currentLanguage = $channel->getLanguage();
+            $needsLanguageUpdate = $overwriteAll
+                || $currentLanguage === null
+                || trim($currentLanguage) === ''
+                || $currentLanguage === 'und';
+
+            if ($needsLanguageUpdate) {
+                $newLanguage = CountryLanguageMapper::getLanguageCode($originalCountry);
+                if ($newLanguage !== $currentLanguage) {
+                    $channel->setLanguage($newLanguage);
+                    $stats['language_updated']++;
+                }
+            }
+
+            $newCountry = CountryLanguageMapper::getFullCountryName($originalCountry);
+            if ($newCountry !== $originalCountry) {
+                $channel->setCountry($newCountry);
+                $stats['country_updated']++;
+            }
+
+            if (++$batchCount % 100 === 0) {
+                $this->em->flush();
+                $this->em->clear();
+            }
+        }
+
+        $this->em->flush();
+        $this->em->clear();
 
         return $stats;
     }
