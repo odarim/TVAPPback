@@ -32,3 +32,9 @@ services:
     App\Controller\LivewatchProxyController:
         arguments:
             $backendBaseUrl: '%env(BACKEND_BASE_URL)%'
+
+    # Torrent worker service — wired with internal URL and shared secret
+    App\Service\TorrentWorkerService:
+        arguments:
+            $workerUrl:    '%env(TORRENT_WORKER_URL)%'
+            $workerSecret: '%env(TORRENT_WORKER_SECRET)%'
