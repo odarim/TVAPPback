@@ -32,3 +32,4 @@ services:
     App\Controller\LivewatchProxyController:
         arguments:
             $backendBaseUrl: '%env(BACKEND_BASE_URL)%'
+
