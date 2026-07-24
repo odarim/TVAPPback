@@ -15,20 +15,38 @@ use Symfony\Component\Routing\Annotation\Route;
 #[Route('/api/history')]
 final class WatchHistoryController extends AbstractController
 {
+    private const DEFAULT_LIMIT = 12;
+    private const MAX_LIMIT = 50;
+
     public function __construct(
         private readonly WatchHistoryRepository $historyRepository,
         private readonly EntityManagerInterface $entityManager,
     ) {}
 
     #[Route('', name: 'get_watch_history', methods: ['GET'])]
-    public function getHistory(): JsonResponse
+    public function getHistory(Request $request): JsonResponse
     {
         $user = $this->getUser();
         if (!$user) {
             return $this->json(['error' => 'Unauthorized'], 401);
         }
 
-        $records = $this->historyRepository->findBy(['user' => $user]);
+        $page  = max(1, $request->query->getInt('page', 1));
+        $limit = $request->query->getInt('limit', self::DEFAULT_LIMIT);
+        $limit = min(self::MAX_LIMIT, max(1, $limit));
+
+        $total = $this->historyRepository->count(['user' => $user]);
+        $totalPages = $total > 0 ? (int) ceil($total / $limit) : 1;
+
+        // Clamp page in case the caller asks for one past the end
+        $page = min($page, $totalPages);
+
+        $records = $this->historyRepository->findBy(
+            ['user' => $user],
+            ['updatedAt' => 'DESC'],
+            $limit,
+            ($page - 1) * $limit
+        );
 
         $data = array_map(function (WatchHistory $h) {
             return [
@@ -43,7 +61,12 @@ final class WatchHistoryController extends AbstractController
             ];
         }, $records);
 
-        return $this->json(['history' => $data]);
+        return $this->json([
+            'history'    => $data,
+            'page'       => $page,
+            'totalPages' => $totalPages,
+            'total'      => $total,
+        ]);
     }
 
     #[Route('/mark', name: 'mark_watch_history', methods: ['POST'])]
@@ -61,7 +84,7 @@ final class WatchHistoryController extends AbstractController
 
         $tmdbId = $content['tmdb_id'] ?? null;
         $type   = $content['type'] ?? null;
-        
+
         if ($tmdbId === null || !in_array($type, ['movie', 'series'], true)) {
             return $this->json(['error' => 'Missing tmdb_id or invalid type'], 400);
         }
@@ -83,11 +106,9 @@ final class WatchHistoryController extends AbstractController
 
         // Check if history record already exists
         $record = $this->historyRepository->findOneBy([
-            'user'    => $user,
-            'tmdbId'  => $tmdbId,
-            'type'    => $type,
-            'season'  => $season,
-            'episode' => $episode,
+            'user'   => $user,
+            'tmdbId' => $tmdbId,
+            'type'   => $type,
         ]);
 
         if (!$record) {
@@ -95,14 +116,23 @@ final class WatchHistoryController extends AbstractController
             $record->setUser($user);
             $record->setTmdbId((int) $tmdbId);
             $record->setType($type);
-            $record->setSeason($season !== null ? (int) $season : null);
-            $record->setEpisode($episode !== null ? (int) $episode : null);
         }
 
-        // Always update enrichment fields
-        if ($imdbId)    $record->setImdbId($imdbId);
-        if ($titleName) $record->setTitleName($titleName);
-        if ($posterUrl) $record->setPosterUrl($posterUrl);
+        $record->setSeason($season !== null ? (int) $season : null);
+        $record->setEpisode($episode !== null ? (int) $episode : null);
+
+        if ($imdbId) {
+            $record->setImdbId($imdbId);
+        }
+
+        if ($titleName) {
+            $record->setTitleName($titleName);
+        }
+
+        if ($posterUrl) {
+            $record->setPosterUrl($posterUrl);
+        }
+
         $record->setUpdatedAt(new \DateTimeImmutable());
 
         $this->entityManager->persist($record);
