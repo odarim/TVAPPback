@@ -32,4 +32,12 @@ services:
     App\Controller\LivewatchProxyController:
         arguments:
             $backendBaseUrl: '%env(BACKEND_BASE_URL)%'
+
+    App\Service\CipherService:
+        arguments:
+            $cipherKey: '%env(STREAM_CIPHER_KEY)%'
+
+    App\Controller\SettingsController:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
 

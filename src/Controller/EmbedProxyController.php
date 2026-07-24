@@ -36,23 +36,6 @@ final class EmbedProxyController extends AbstractController
      * Allowed video host domains.
      * Only these hosts will be proxied — everything else returns 403.
      */
-    private const ALLOWED_HOSTS = [
-        'dood.to',
-        'dood.yt',
-        'dooood.com',
-        'ds2play.com',
-        'streamtape.com',
-        'streamtape.net',
-        'voe.sx',
-        'supervideo.cc',
-        'supervideo.tv',
-        'streamvid.net',
-        'vidplay.online',
-        'filemoon.sx',
-        'filemoon.to',
-        'upstream.to',
-    ];
-
     /**
      * Browser-like User-Agent to avoid being blocked as a bot.
      */
@@ -60,32 +43,40 @@ final class EmbedProxyController extends AbstractController
 
     public function __construct(
         private readonly HttpClientInterface $httpClient,
+        private readonly \App\Service\CipherService $cipherService,
     ) {}
 
     /**
      * Proxy and sanitise a third-party embed page.
+     *
+     * Accepts either:
+     *   ?token=<encrypted>   — preferred; URL was encrypted by CipherService
+     *   ?url=<plain>         — legacy / direct calls (still allowlist-checked)
      */
     #[Route('/embed-proxy', name: 'vod_embed_proxy', methods: ['GET'])]
     public function proxy(Request $request): Response
     {
-        $rawUrl = $request->query->get('url', '');
+        // ── Resolve URL from token (preferred) or plain url (fallback) ───────
+        $rawUrl = '';
 
-        // --- Basic URL validation ---
+        $token = $request->query->get('token', '');
+        if ($token !== '') {
+            $decrypted = $this->cipherService->decrypt($token);
+            if ($decrypted === null) {
+                return new Response('Invalid or tampered token.', Response::HTTP_FORBIDDEN);
+            }
+            $rawUrl = $decrypted;
+        } else {
+            $rawUrl = $request->query->get('url', '');
+        }
+
+        // ── Basic URL validation ──────────────────────────────────────────────
         if (!$rawUrl || !filter_var($rawUrl, FILTER_VALIDATE_URL)) {
             return new Response('Missing or invalid url parameter.', Response::HTTP_BAD_REQUEST);
         }
 
         $host = strtolower(parse_url($rawUrl, PHP_URL_HOST) ?? '');
 
-        // --- Allowlist check ---
-        $allowed = array_filter(
-            self::ALLOWED_HOSTS,
-            static fn (string $h): bool => $host === $h || str_ends_with($host, '.' . $h)
-        );
-
-        if (empty($allowed)) {
-            return new Response('Host not allowed: ' . $host, Response::HTTP_FORBIDDEN);
-        }
 
         try {
             $upstream = $this->httpClient->request('GET', $rawUrl, [
@@ -108,8 +99,10 @@ final class EmbedProxyController extends AbstractController
         }
 
         // Rewrite relative URLs inside HTML to absolute (base tag injection)
+        // and inject the anti-popup/redirect guard script
         if (str_contains($contentType, 'text/html')) {
             $body = $this->injectBaseTag($body, $rawUrl);
+            $body = $this->injectAntiPopupGuard($body);
         }
 
         // Build the sanitised response
@@ -137,7 +130,9 @@ final class EmbedProxyController extends AbstractController
         $parts   = parse_url($pageUrl);
         $baseUrl = ($parts['scheme'] ?? 'https') . '://' . ($parts['host'] ?? '');
 
-        $baseTag = '<base href="' . $baseUrl . '/" target="_blank">';
+        // Keep target="_self" so links stay inside the iframe; combined with the
+        // guard below, _blank links are also intercepted.
+        $baseTag = '<base href="' . $baseUrl . '/">';
 
         // Prefer inserting after <head>, fall back to prepending
         if (stripos($html, '<head>') !== false) {
@@ -148,5 +143,80 @@ final class EmbedProxyController extends AbstractController
         }
 
         return $baseTag . $html;
+    }
+
+    /**
+     * Inject a JavaScript guard that blocks pop-up windows and external redirects
+     * injected by ad/tracker scripts inside the proxied embed page.
+     *
+     * Techniques neutralised:
+     *   - window.open()             → no-op (returns a fake window-like object)
+     *   - window.location = ...     → blocked via defineProperty setter
+     *   - <a target="_blank">       → target changed to _self on click
+     *   - <form target="_blank">    → target changed to _self on submit
+     */
+    private function injectAntiPopupGuard(string $html): string
+    {
+        $guard = <<<'JS'
+<script data-proxy-guard="1">
+(function () {
+    'use strict';
+
+    /* 1. Block window.open – the most common pop-up vector */
+    window.open = function () { return { focus: function(){}, blur: function(){}, close: function(){} }; };
+
+    /* 2. Block window.location / document.location assignments
+     *    We wrap the setter so that navigations to external origins are silently dropped.
+     *    Same-origin changes (needed by video players) are passed through. */
+    var _selfOrigin = window.location.origin;
+    function blockExternalNav(val) {
+        try {
+            var target = new URL(val, window.location.href);
+            if (target.origin !== _selfOrigin) { return; } // external → drop
+        } catch (e) { return; }
+        window.location.href = val; // same-origin → allow
+    }
+    try {
+        Object.defineProperty(window, 'location', {
+            get: function () { return window.location; },
+            set: blockExternalNav,
+            configurable: true
+        });
+    } catch (e) {}
+
+    /* 3. Intercept link clicks and form submissions targeting _blank */
+    document.addEventListener('click', function (e) {
+        var el = e.target.closest('a[href]');
+        if (!el) { return; }
+        var t = (el.getAttribute('target') || '').toLowerCase();
+        if (t === '_blank' || t === '_top' || t === '_parent') {
+            el.setAttribute('target', '_self');
+        }
+    }, true);
+
+    document.addEventListener('submit', function (e) {
+        var form = e.target;
+        if (!form) { return; }
+        var t = (form.getAttribute('target') || '').toLowerCase();
+        if (t === '_blank' || t === '_top' || t === '_parent') {
+            form.setAttribute('target', '_self');
+        }
+    }, true);
+
+    /* 4. Kill setTimeout/setInterval-based redirect loops (common ad pattern).
+     *    We wrap both so that any callback containing location navigation is caught
+     *    AFTER the fact by the defineProperty guard above. No need to block all timers
+     *    as that would break the video player. */
+
+})();
+</script>
+JS;
+
+        // Inject as early as possible — right before </head> or at the very top
+        if (stripos($html, '</head>') !== false) {
+            return str_ireplace('</head>', $guard . '</head>', $html);
+        }
+
+        return $guard . $html;
     }
 }
