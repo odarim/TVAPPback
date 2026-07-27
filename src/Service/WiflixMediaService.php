@@ -269,7 +269,7 @@ final class WiflixMediaService
             }
 
             // Find eval packed script
-            if (preg_match('/eval\s*\(\s*function\s*\(.*?\}\s*\(\s*([\'"].*?[\'"])\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([\'"].*?[\'"])\.split\s*\(\s*[\'"]\|[\'"]\s*\)/s', $html, $m)) {
+            if (preg_match('/eval\s*\(\s*function\s*\(.*?}\s*\(\s*([\'"].*?[\'"])\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([\'"].*?[\'"])\.split\s*\(\s*[\'"]\|[\'"]\s*\)/s', $html, $m)) {
                 $unpacked = $this->unpackDeanEdwards($m[1], (int)$m[2], (int)$m[3], $m[4]);
                 
                 // Scan the unpacked JS for any .m3u8 files

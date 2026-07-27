@@ -27,7 +27,9 @@
         "symfony/twig-bundle": "6.4.*",
         "symfony/uid": "6.4.*",
         "symfony/yaml": "6.4.*",
-        "twig/twig": "^3.23"
+        "twig/twig": "^3.23",
+      "ext-dom": "*",
+      "ext-libxml": "*"
     },
     "config": {
         "allow-plugins": {
