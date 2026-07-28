@@ -96,16 +96,16 @@ final class WiflixMediaService
                 if ($directStream !== null) {
                     $results[] = [
                         'url' => $directStream,
-                        'name' => 'Wiflix (' . $name . ' Direct)',
+                        'name' => 'Wiflix (' . $name . ')',
                         'language' => $langLabel,
-                        'tag' => 'Direct Stream',
+                        'tag' => $this->displayLanguageTag($langLabel),
                     ];
                     // Still add the iframe fallback as well so the user has options
                     $results[] = [
                         'url' => $embedUrl,
-                        'name' => 'Wiflix (' . $name . ' Embed)',
+                        'name' => 'Wiflix (' . $name . ')',
                         'language' => $langLabel,
-                        'tag' => 'Iframe Embed',
+                        'tag' => $this->displayLanguageTag($langLabel),
                     ];
                     continue;
                 }
@@ -116,7 +116,7 @@ final class WiflixMediaService
                 'url' => $embedUrl,
                 'name' => 'Wiflix (' . $name . ')',
                 'language' => $langLabel,
-                'tag' => 'Iframe Embed',
+                'tag' => $this->displayLanguageTag($langLabel),
             ];
         }
 
@@ -328,6 +328,17 @@ final class WiflixMediaService
             $res = $chars[$r] . $res;
         }
         return $res;
+    }
+
+    private function displayLanguageTag(string $language): string
+    {
+        return match (strtolower(trim($language))) {
+            'en', 'vostfr' => 'VOSTFR',
+            'vfq' => 'VFQ',
+            'vff', 'truefrench' => 'VFF',
+            'vo' => 'VO',
+            default => 'VF',
+        };
     }
 
     private function fetchUrl(string $url): string

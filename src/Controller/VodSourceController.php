@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\Service\CipherService;
+use App\Service\Fs16MediaService;
 use App\Service\MediaProviderService;
 use App\Service\WiflixMediaService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -22,6 +23,7 @@ use Symfony\Component\Routing\Annotation\Route;
  *
  * Source names are anonymised before returning:
  *   – Sources from WiflixMediaService  → "Alpha 1", "Alpha 2", …
+ *   – Sources from Fs16MediaService    → "Charlie 1", "Charlie 2", …
  *   – Sources from MediaProviderService → "Beta 1",  "Beta 2",  …
  *
  * The response body is AES-256-GCM encrypted so the raw URLs and provider
@@ -33,7 +35,7 @@ use Symfony\Component\Routing\Annotation\Route;
  *   - tmdb_id    (required) integer — TMDB numeric ID
  *   - type       (required) string  — "movie" or "series"
  *   - lang       (optional) string  — ISO 639-1 code (e.g. "fr")
- *   - title_name (optional) string  — title for Wiflix lookup
+ *   - title_name (optional) string  — title for title-based provider lookup
  *   - season     (optional) integer — required if type="series"
  *   - episode    (optional) integer — required if type="series"
  */
@@ -43,6 +45,7 @@ final class VodSourceController extends AbstractController
     public function __construct(
         private readonly MediaProviderService $mediaProviderService,
         private readonly WiflixMediaService   $wiflixMediaService,
+        private readonly Fs16MediaService     $fs16MediaService,
         private readonly CipherService        $cipherService,
     ) {}
 
@@ -74,7 +77,7 @@ final class VodSourceController extends AbstractController
             }
         }
 
-        // ── Optional title_name (for Wiflix) ────────────────────────────────
+        // ── Optional title_name (for title-based providers) ────────────────
         $titleName = $request->query->get('title_name');
         if ($titleName !== null) {
             $titleName = trim($titleName);
@@ -98,8 +101,10 @@ final class VodSourceController extends AbstractController
 
         // ── Fetch from providers ─────────────────────────────────────────────
         $wiflixSources = [];
+        $charlieSources = [];
         if ($titleName !== null) {
             $wiflixSources = $this->wiflixMediaService->getSources($type, $titleName, $lang, $season, $episode);
+            $charlieSources = $this->fs16MediaService->getSources($type, $titleName, $lang, $season, $episode);
         }
 
         $betaSources = $this->mediaProviderService->getSources($type, $tmdbId, $lang, $season, $episode);
@@ -108,6 +113,7 @@ final class VodSourceController extends AbstractController
         $sources = array_merge(
             $this->anonymiseSources($wiflixSources, 'Alpha'),
             $this->anonymiseSources($betaSources,   'Beta'),
+            $this->anonymiseSources($charlieSources, 'Charlie'),
         );
 
         // ── Encrypt the entire response ──────────────────────────────────────
@@ -166,11 +172,35 @@ final class VodSourceController extends AbstractController
                 'token'    => $encryptedToken,       // opaque — real URL hidden
                 'name'     => $prefix . ' ' . $n,   // e.g. "Alpha 1", "Beta 2"
                 'language' => $src['language'] ?? 'fr',
-                'tag'      => $src['tag'] ?? null,
+                'tag'      => $this->displaySourceTag($src['tag'] ?? null, $src['language'] ?? 'fr'),
             ];
             $n++;
         }
         return $out;
+    }
+
+    private function displaySourceTag(?string $tag, string $language): string
+    {
+        $value = strtolower(trim($tag ?? ''));
+        if (in_array($value, ['vf', 'vostfr', 'vfq', 'vff', 'vo'], true)) {
+            return strtoupper($value);
+        }
+
+        $labels = [];
+        foreach (preg_split('/[\s,;|]+/', strtolower(trim($language))) ?: [] as $lang) {
+            $labels[] = match ($lang) {
+                'fr', 'fre', 'fra', 'french', 'vf' => 'VF',
+                'en', 'eng', 'english', 'vostfr' => 'VOSTFR',
+                'vfq' => 'VFQ',
+                'vff', 'truefrench' => 'VFF',
+                'vo' => 'VO',
+                default => strtoupper($lang),
+            };
+        }
+
+        $labels = array_values(array_unique(array_filter($labels)));
+
+        return $labels !== [] ? implode(', ', $labels) : 'VF';
     }
 
     private function encryptedError(string $message, int $status): Response
