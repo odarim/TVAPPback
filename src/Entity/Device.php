@@ -40,6 +40,13 @@ class Device
     #[Groups(['device:read'])]
     private ?\DateTimeInterface $lastActiveAt = null;
 
+    #[ORM\Column(options: ['default' => false])]
+    private bool $adultContentUnlocked = false;
+
+    #[ORM\Column(type: 'datetime_immutable', nullable: true)]
+    private ?\DateTimeImmutable $adultContentUnlockedAt = null;
+
+
     public function __construct()
     {
         $this->lastActiveAt = new \DateTime();
@@ -96,5 +103,23 @@ class Device
         $this->lastActiveAt = $lastActiveAt;
 
         return $this;
+    }
+
+    public function isAdultContentUnlocked(): bool
+    {
+        return $this->adultContentUnlocked;
+    }
+
+    public function setAdultContentUnlocked(bool $unlocked): static
+    {
+        $this->adultContentUnlocked = $unlocked;
+        $this->adultContentUnlockedAt = $unlocked ? new \DateTimeImmutable() : null;
+
+        return $this;
+    }
+
+    public function getAdultContentUnlockedAt(): ?\DateTimeImmutable
+    {
+        return $this->adultContentUnlockedAt;
     }
 }

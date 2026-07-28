@@ -98,6 +98,15 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\OneToMany(mappedBy: 'user', targetEntity: ActiveSession::class, orphanRemoval: true)]
     private Collection $activeSessions;
 
+    #[ORM\Column(type: 'string', length: 255, nullable: true)]
+    private ?string $adultLockPasswordHash = null;
+
+    #[ORM\Column(type: 'string', length: 64, nullable: true)]
+    private ?string $adultLockSalt = null;
+
+    #[ORM\Column(type: 'datetime_immutable', nullable: true)]
+    private ?\DateTimeImmutable $adultLockUpdatedAt = null;
+
     public function __construct()
     {
         $this->subscriptions = new ArrayCollection();
@@ -346,6 +355,40 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
             }
         }
 
+        return $this;
+    }
+
+
+    public function getAdultLockPasswordHash(): ?string
+    {
+        return $this->adultLockPasswordHash;
+    }
+
+    public function setAdultLockPasswordHash(?string $adultLockPasswordHash): static
+    {
+        $this->adultLockPasswordHash = $adultLockPasswordHash;
+        return $this;
+    }
+
+    public function getAdultLockSalt(): ?string
+    {
+        return $this->adultLockSalt;
+    }
+
+    public function setAdultLockSalt(?string $adultLockSalt): static
+    {
+        $this->adultLockSalt = $adultLockSalt;
+        return $this;
+    }
+
+    public function getAdultLockUpdatedAt(): ?\DateTimeImmutable
+    {
+        return $this->adultLockUpdatedAt;
+    }
+
+    public function setAdultLockUpdatedAt(?\DateTimeImmutable $adultLockUpdatedAt): static
+    {
+        $this->adultLockUpdatedAt = $adultLockUpdatedAt;
         return $this;
     }
 }

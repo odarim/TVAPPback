@@ -44,6 +44,7 @@ security:
         - { path: ^/api/vod/embed-proxy, roles: PUBLIC_ACCESS }
         - { path: ^/api/settings/public, roles: PUBLIC_ACCESS }
         - { path: ^/api,       roles: IS_AUTHENTICATED_FULLY }
+        - { path: ^/api/adult-lock,       roles: IS_AUTHENTICATED_FULLY }
 
 when@test:
     security:
