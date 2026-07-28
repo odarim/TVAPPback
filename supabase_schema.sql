@@ -10,6 +10,7 @@
 --   Version20260630000000  (active_session + connection-limit columns)
 --   Version20260710063121  (torrent_session)
 --   Version20260722053848  (watch_history)
+--   Version20260728123901  (adult-content lock: user + device columns)
 --
 -- Notes
 --  * Column types / index names / constraint names match Doctrine exactly, so
@@ -45,6 +46,9 @@ CREATE TABLE IF NOT EXISTS "user" (
     is_active                BOOLEAN      DEFAULT true NOT NULL,
     max_devices_override     INT          DEFAULT NULL,
     max_connections_override INT          DEFAULT NULL,
+    adult_lock_password_hash VARCHAR(255) DEFAULT NULL,
+    adult_lock_salt          VARCHAR(64)  DEFAULT NULL,
+    adult_lock_updated_at    TIMESTAMP(0) WITHOUT TIME ZONE DEFAULT NULL,
     PRIMARY KEY (id)
 );
 
@@ -85,11 +89,13 @@ CREATE TABLE IF NOT EXISTS channel_stream (
 );
 
 CREATE TABLE IF NOT EXISTS device (
-    id             UUID         NOT NULL,
-    device_id      VARCHAR(255) NOT NULL,
-    device_name    VARCHAR(255) DEFAULT NULL,
-    last_active_at TIMESTAMP(0) WITHOUT TIME ZONE NOT NULL,
-    user_id        UUID         NOT NULL,
+    id                        UUID         NOT NULL,
+    device_id                 VARCHAR(255) NOT NULL,
+    device_name               VARCHAR(255) DEFAULT NULL,
+    last_active_at            TIMESTAMP(0) WITHOUT TIME ZONE NOT NULL,
+    user_id                   UUID         NOT NULL,
+    adult_content_unlocked    BOOLEAN      DEFAULT false NOT NULL,
+    adult_content_unlocked_at TIMESTAMP(0) WITHOUT TIME ZONE DEFAULT NULL,
     PRIMARY KEY (id)
 );
 
@@ -241,7 +247,8 @@ INSERT INTO doctrine_migration_versions (version, executed_at, execution_time) V
     ('DoctrineMigrations\Version20260630000000', NOW(), 0),
     ('DoctrineMigrations\Version20260702000000', NOW(), 0),
     ('DoctrineMigrations\Version20260710063121', NOW(), 0),
-    ('DoctrineMigrations\Version20260722053848', NOW(), 0)
+    ('DoctrineMigrations\Version20260722053848', NOW(), 0),
+    ('DoctrineMigrations\Version20260728123901', NOW(), 0)
 ON CONFLICT (version) DO NOTHING;
 
 COMMIT;
