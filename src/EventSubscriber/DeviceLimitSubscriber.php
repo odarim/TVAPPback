@@ -40,6 +40,11 @@ class DeviceLimitSubscriber implements EventSubscriberInterface
             return;
         }
 
+        // Admin accounts have unlimited devices — skip the limit check
+        if (in_array('ROLE_ADMIN', $user->getRoles(), true)) {
+            return;
+        }
+
         // Use SessionService to respect user-level overrides (maxDevicesOverride)
         $maxDevices = $this->sessionService->getMaxDevices($user);
         $currentDevicesCount = count($user->getDevices());

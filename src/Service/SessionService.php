@@ -25,9 +25,14 @@ class SessionService
     /**
      * Returns the effective max devices for a user.
      * Uses the user-level override if set, otherwise falls back to the active package value.
+     * Admin accounts (ROLE_ADMIN) have unlimited devices.
      */
     public function getMaxDevices(User $user): int
     {
+        if (in_array('ROLE_ADMIN', $user->getRoles(), true)) {
+            return PHP_INT_MAX;
+        }
+
         if ($user->getMaxDevicesOverride() !== null) {
             return $user->getMaxDevicesOverride();
         }
@@ -43,9 +48,14 @@ class SessionService
     /**
      * Returns the effective max simultaneous connections for a user.
      * Uses the user-level override if set, otherwise falls back to the active package value.
+     * Admin accounts (ROLE_ADMIN) have unlimited connections.
      */
     public function getMaxConnections(User $user): int
     {
+        if (in_array('ROLE_ADMIN', $user->getRoles(), true)) {
+            return PHP_INT_MAX;
+        }
+
         if ($user->getMaxConnectionsOverride() !== null) {
             return $user->getMaxConnectionsOverride();
         }

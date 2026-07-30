@@ -2,7 +2,6 @@
 
 namespace App\Entity;
 
-use ApiPlatform\Metadata\ApiResource;
 use App\Repository\DeviceRepository;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
@@ -10,10 +9,7 @@ use Symfony\Component\Serializer\Annotation\Groups;
 use Symfony\Component\Uid\Uuid;
 
 #[ORM\Entity(repositoryClass: DeviceRepository::class)]
-#[ApiResource(
-    normalizationContext: ['groups' => ['device:read']],
-    denormalizationContext: ['groups' => ['device:write']],
-)]
+#[ORM\HasLifecycleCallbacks]
 class Device
 {
     #[ORM\Id]
@@ -36,9 +32,17 @@ class Device
     #[Groups(['device:read', 'device:write'])]
     private ?string $deviceName = null;
 
+    #[ORM\Column(length: 255, nullable: true)]
+    #[Groups(['device:read', 'device:write'])]
+    private ?string $deviceType = null;
+
     #[ORM\Column(type: Types::DATETIME_MUTABLE)]
     #[Groups(['device:read'])]
     private ?\DateTimeInterface $lastActiveAt = null;
+
+    #[ORM\Column(type: Types::DATETIME_MUTABLE)]
+    #[Groups(['device:read'])]
+    private ?\DateTimeInterface $createdAt = null;
 
     #[ORM\Column(options: ['default' => false])]
     private bool $adultContentUnlocked = false;
@@ -48,6 +52,13 @@ class Device
 
 
     public function __construct()
+    {
+        $this->lastActiveAt = new \DateTime();
+        $this->createdAt = new \DateTime();
+    }
+
+    #[ORM\PreUpdate]
+    public function onPreUpdate(): void
     {
         $this->lastActiveAt = new \DateTime();
     }
@@ -93,6 +104,18 @@ class Device
         return $this;
     }
 
+    public function getDeviceType(): ?string
+    {
+        return $this->deviceType;
+    }
+
+    public function setDeviceType(?string $deviceType): static
+    {
+        $this->deviceType = $deviceType;
+
+        return $this;
+    }
+
     public function getLastActiveAt(): ?\DateTimeInterface
     {
         return $this->lastActiveAt;
@@ -101,6 +124,18 @@ class Device
     public function setLastActiveAt(\DateTimeInterface $lastActiveAt): static
     {
         $this->lastActiveAt = $lastActiveAt;
+
+        return $this;
+    }
+
+    public function getCreatedAt(): ?\DateTimeInterface
+    {
+        return $this->createdAt;
+    }
+
+    public function setCreatedAt(\DateTimeInterface $createdAt): static
+    {
+        $this->createdAt = $createdAt;
 
         return $this;
     }
