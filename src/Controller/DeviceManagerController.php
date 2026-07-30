@@ -39,7 +39,7 @@ class DeviceManagerController extends AbstractController
             'createdAt' => $d->getCreatedAt()?->format(DATE_ATOM),
             'adultContentUnlocked' => $d->isAdultContentUnlocked(),
             'isCurrent' => $d->getDeviceId() === $currentDeviceId,
-            'token' => (string) $d->getToken() === $currentToken ? $d->getToken() : null,
+            'token' => $d->getToken() !== null && (string) $d->getToken() === $currentToken ? $d->getToken() : null,
         ], $user->getDevices()->toArray());
 
         $maxDevices = $this->sessionService->getMaxDevices($user);
@@ -82,7 +82,10 @@ class DeviceManagerController extends AbstractController
         }
 
         if ($existingDevice) {
-            // Update last active timestamp and name/type if changed
+            // Generate a token for devices that existed before this feature
+            if (!$existingDevice->getToken()) {
+                $existingDevice->setToken(bin2hex(random_bytes(32)));
+            }
             $existingDevice->setLastActiveAt(new \DateTime());
             if ($deviceName) $existingDevice->setDeviceName($deviceName);
             if ($deviceType) $existingDevice->setDeviceType($deviceType);

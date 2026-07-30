@@ -24,6 +24,7 @@ class DeviceTokenSubscriber implements EventSubscriberInterface
         '/api/livewatch-hls',
         '/api/vod/embed-proxy',
         '/api/settings/public',
+        '/api/devices/register',
     ];
 
     public function __construct(
