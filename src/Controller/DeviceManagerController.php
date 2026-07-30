@@ -28,6 +28,7 @@ class DeviceManagerController extends AbstractController
         $user = $this->getUser();
 
         $currentDeviceId = $request->headers->get('X-Device-Id', '');
+        $currentToken = $request->headers->get('X-Device-Token', '');
 
         $devices = array_map(fn($d) => [
             'id' => (string) $d->getId(),
@@ -38,6 +39,7 @@ class DeviceManagerController extends AbstractController
             'createdAt' => $d->getCreatedAt()?->format(DATE_ATOM),
             'adultContentUnlocked' => $d->isAdultContentUnlocked(),
             'isCurrent' => $d->getDeviceId() === $currentDeviceId,
+            'token' => (string) $d->getToken() === $currentToken ? $d->getToken() : null,
         ], $user->getDevices()->toArray());
 
         $maxDevices = $this->sessionService->getMaxDevices($user);
@@ -85,7 +87,12 @@ class DeviceManagerController extends AbstractController
             if ($deviceName) $existingDevice->setDeviceName($deviceName);
             if ($deviceType) $existingDevice->setDeviceType($deviceType);
             $this->em->flush();
-            return $this->json(['registered' => true, 'deviceId' => (string) $existingDevice->getId(), 'newDevice' => false]);
+            return $this->json([
+                'registered' => true,
+                'deviceId' => (string) $existingDevice->getId(),
+                'newDevice' => false,
+                'token' => $existingDevice->getToken(),
+            ]);
         }
 
         // New device — enforce the device limit
@@ -102,11 +109,17 @@ class DeviceManagerController extends AbstractController
         $device->setDeviceName($deviceName);
         $device->setDeviceType($deviceType);
         $device->setLastActiveAt(new \DateTime());
+        $device->setToken(bin2hex(random_bytes(32)));
 
         $this->em->persist($device);
         $this->em->flush();
 
-        return $this->json(['registered' => true, 'deviceId' => (string) $device->getId(), 'newDevice' => true], 201);
+        return $this->json([
+            'registered' => true,
+            'deviceId' => (string) $device->getId(),
+            'newDevice' => true,
+            'token' => $device->getToken(),
+        ], 201);
     }
 
     // Lets the user lock a DIFFERENT device remotely (e.g. lock device 2

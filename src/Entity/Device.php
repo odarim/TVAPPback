@@ -50,6 +50,9 @@ class Device
     #[ORM\Column(type: 'datetime_immutable', nullable: true)]
     private ?\DateTimeImmutable $adultContentUnlockedAt = null;
 
+    #[ORM\Column(length: 64, unique: true, nullable: true)]
+    private ?string $token = null;
+
 
     public function __construct()
     {
@@ -156,5 +159,16 @@ class Device
     public function getAdultContentUnlockedAt(): ?\DateTimeImmutable
     {
         return $this->adultContentUnlockedAt;
+    }
+
+    public function getToken(): ?string
+    {
+        return $this->token;
+    }
+
+    public function setToken(string $token): static
+    {
+        $this->token = $token;
+        return $this;
     }
 }
