@@ -16,6 +16,7 @@ class DeviceTokenSubscriber implements EventSubscriberInterface
         '/api/login',
         '/api/signup',
         '/api/token/refresh',
+        '/api/logout',
         '/api/health',
         '/api/docs',
         '/api',
@@ -61,14 +62,21 @@ class DeviceTokenSubscriber implements EventSubscriberInterface
 
         $deviceToken = $request->headers->get('X-Device-Token', '');
         if (!$deviceToken) {
-            return; // Allow through — let the JWT firewall handle auth
+            return;
         }
 
         $device = $this->em->getRepository(Device::class)->findOneBy(['token' => $deviceToken]);
-        if (!$device) {
-            $event->setController(function () {
-                return new JsonResponse(['error' => 'Device not recognized. Please log in again.'], 401);
-            });
+        if ($device) {
+            $request->attributes->set('_device', $device);
+            return;
         }
+
+        // Device token provided but device not found — the device was removed
+        // from another browser. Reject immediately so the frontend can force
+        // logout instead of continuing with a stale session.
+        $event->setResponse(new JsonResponse([
+            'error' => 'device_removed',
+            'message' => 'This device has been removed from your account.',
+        ], 401));
     }
 }
