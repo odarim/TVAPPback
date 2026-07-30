@@ -145,16 +145,47 @@ class DeviceManagerController extends AbstractController
         return new JsonResponse(['error' => 'Device not found.'], 404);
     }
 
-    // Remove a device from the account. Requires account password verification
-    // for security (like Netflix).
-    #[Route('/{id}/remove', methods: ['DELETE'])]
-    public function removeDevice(string $id, Request $request): JsonResponse
+    // Unlock a device remotely. Requires the adult lock password hash to verify.
+    #[Route('/{id}/adult-lock/unlock', methods: ['POST'])]
+    public function unlockDevice(string $id, Request $request): JsonResponse
     {
         /** @var User $user */
         $user = $this->getUser();
 
         $data = json_decode($request->getContent(), true);
-        $password = $data['password'] ?? '';
+        $passwordHash = $data['passwordHash'] ?? '';
+
+        $storedHash = $user->getAdultLockPasswordHash();
+        if (!$storedHash || !hash_equals($storedHash, $passwordHash)) {
+            return new JsonResponse(['error' => 'Incorrect adult lock password.'], 403);
+        }
+
+        foreach ($user->getDevices() as $device) {
+            if ((string) $device->getId() === $id) {
+                $device->setAdultContentUnlocked(true);
+                $this->em->flush();
+                return new JsonResponse(['adultContentUnlocked' => true]);
+            }
+        }
+
+        return new JsonResponse(['error' => 'Device not found.'], 404);
+    }
+
+    // Remove a device from the account. Requires account password verification
+    // for security (like Netflix).
+    #[Route('/{id}/remove', methods: ['DELETE', 'POST'])]
+    public function removeDevice(string $id, Request $request): JsonResponse
+    {
+        /** @var User $user */
+        $user = $this->getUser();
+
+        // Try JSON body first, fall back to form data
+        $data = json_decode($request->getContent(), true) ?? [];
+        $password = $data['password'] ?? $request->request->get('password', '');
+
+        if (!$password) {
+            return new JsonResponse(['error' => 'Password is required.'], 400);
+        }
 
         // Verify the account password before allowing device removal
         if (!$this->passwordHasher->isPasswordValid($user, $password)) {
