@@ -64,6 +64,10 @@ class ChannelLogoController extends AbstractController
     public function backfillChunk(Request $request): JsonResponse
     {
         try {
+            // The first chunk downloads + indexes the iptv-org database, which
+            // can take a bit; give this request some headroom.
+            @set_time_limit(300);
+
             $data = json_decode($request->getContent(), true);
             $channels = $data['channels'] ?? [];
 

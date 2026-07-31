@@ -120,7 +120,11 @@ class ChannelLogoService
             }
 
             $stats['processed']++;
-            $logo = $this->resolve($name, $item['country'] ?? null);
+            // Bulk mode: iptv-org only. The Wikipedia fallback does one slow
+            // HTTP call per channel and makes batches long enough to time out /
+            // expire the JWT mid-batch. Use the per-channel fetch-logo endpoint
+            // when you need a Wikipedia logo for a specific channel.
+            $logo = $this->resolve($name, $item['country'] ?? null, false);
             if ($logo) {
                 $channel->setLogo($logo);
                 $stats['filled']++;
