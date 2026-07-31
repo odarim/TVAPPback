@@ -10,9 +10,9 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
 /**
  * Resolves channel logos from public sources using a fallback chain:
  *
- *   1. iptv-org logo database (github.com/iptv-org/logos) — wide coverage,
- *      direct image URLs, no API key. The full index is downloaded once and
- *      cached on disk for 7 days so repeated runs are cheap.
+ *   1. iptv-org logo database (iptv-org.github.io/api/logos.json joined with
+ *      channels.json) — wide coverage, no API key. The combined name -> url
+ *      index is downloaded once and cached on disk for 7 days.
  *   2. Wikimedia Commons search — free-text search for "<channel> logo",
  *      falls back gracefully when nothing is found.
  *
@@ -21,7 +21,8 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  */
 class ChannelLogoService
 {
-    private const IPTV_INDEX_URL = 'https://iptv-org.github.io/api/channels.json';
+    private const IPTV_CHANNELS_URL = 'https://iptv-org.github.io/api/channels.json';
+    private const IPTV_LOGOS_URL = 'https://iptv-org.github.io/api/logos.json';
     private const WIKIMEDIA_API = 'https://commons.wikimedia.org/w/api.php';
     private const INDEX_TTL = 7 * 86400; // 7 days
 
@@ -243,8 +244,9 @@ class ChannelLogoService
     }
 
     /**
-     * Downloads (once) and caches the iptv-org channel index, keyed by
-     * normalized channel name -> logo URL. Cached on disk for 7 days.
+     * Loads the iptv-org logo index (normalized channel name -> logo URL).
+     * The compact name -> url map is cached on disk for 7 days; only a cache
+     * miss downloads the two ~10MB source files and rebuilds it.
      */
     private function loadIptvIndex(): array
     {
@@ -253,48 +255,81 @@ class ChannelLogoService
         }
 
         $this->iptvIndex = [];
-        $cacheFile = $this->cacheDir . '/iptv_channels_index.json';
-        $content = null;
+        $cacheFile = $this->cacheDir . '/channel_logos_index.json';
 
         if (is_file($cacheFile) && (time() - filemtime($cacheFile)) < self::INDEX_TTL) {
-            $content = file_get_contents($cacheFile) ?: null;
-        } else {
-            try {
-                $response = $this->httpClient->request('GET', self::IPTV_INDEX_URL, ['timeout' => 60]);
-                $content = $response->getContent();
-                if ($content !== '') {
-                    @file_put_contents($cacheFile, $content);
-                }
-            } catch (\Throwable $e) {
-                // Fall back to a stale cache if one exists
-                if (is_file($cacheFile)) {
-                    $content = file_get_contents($cacheFile) ?: null;
-                }
+            $cached = json_decode(file_get_contents($cacheFile) ?: '', true);
+            if (is_array($cached)) {
+                return $this->iptvIndex = $cached;
             }
         }
 
-        if (!$content) {
-            return $this->iptvIndex;
-        }
-
-        $data = json_decode($content, true);
-        if (!is_array($data)) {
-            return $this->iptvIndex;
-        }
-
-        foreach ($data as $entry) {
-            if (!is_array($entry)) {
-                continue;
-            }
-            $name = $this->normalizeName($entry['name'] ?? '');
-            $logo = $entry['logo'] ?? '';
-            if ($name === '' || !$logo || isset($this->iptvIndex[$name])) {
-                continue;
-            }
-            $this->iptvIndex[$name] = $this->normalizeLogoUrl($logo);
+        $index = $this->buildIptvIndex();
+        if ($index !== []) {
+            $this->iptvIndex = $index;
+            @file_put_contents($cacheFile, json_encode($index));
         }
 
         return $this->iptvIndex;
+    }
+
+    /**
+     * Builds the normalized name -> logo URL map by joining the iptv-org
+     * channels list (name -> id) with the logos list (id -> url). Prefers
+     * in-use PNG/JPEG logos over SVG and stores one entry per channel.
+     */
+    private function buildIptvIndex(): array
+    {
+        try {
+            $channelsContent = $this->httpClient->request('GET', self::IPTV_CHANNELS_URL, ['timeout' => 90])->getContent();
+            $logosContent = $this->httpClient->request('GET', self::IPTV_LOGOS_URL, ['timeout' => 90])->getContent();
+        } catch (\Throwable $e) {
+            return [];
+        }
+
+        // Decode as objects (lighter than assoc arrays for these big files)
+        $channels = json_decode($channelsContent, false);
+        $logos = json_decode($logosContent, false);
+        if (!is_array($channels) || !is_array($logos)) {
+            return [];
+        }
+
+        // 1. Best logo URL per channel id
+        $bestById = [];
+        foreach ($logos as $logo) {
+            if (!isset($logo->channel, $logo->url) || !$logo->url) {
+                continue;
+            }
+            $id = $logo->channel;
+            $format = strtoupper((string) ($logo->format ?? ''));
+            $formatPrio = match (true) {
+                $format === 'PNG' => 3,
+                str_contains($format, 'JPEG'), $format === 'JPG' => 2,
+                $format === 'SVG' => 1,
+                default => 0,
+            };
+            $score = (($logo->in_use ?? false) ? 1 : 0) * 100 + $formatPrio;
+
+            if (!isset($bestById[$id]) || $score > $bestById[$id]['score']) {
+                $bestById[$id] = ['url' => $logo->url, 'score' => $score];
+            }
+        }
+        unset($logos);
+
+        // 2. Map channel names to those URLs
+        $nameUrl = [];
+        foreach ($channels as $ch) {
+            $name = $this->normalizeName($ch->name ?? '');
+            if ($name === '' || !isset($bestById[$ch->id])) {
+                continue;
+            }
+            if (!isset($nameUrl[$name])) {
+                $nameUrl[$name] = $this->normalizeLogoUrl($bestById[$ch->id]['url']);
+            }
+        }
+        unset($channels, $bestById);
+
+        return $nameUrl;
     }
 
     private function normalizeName(string $name): string
