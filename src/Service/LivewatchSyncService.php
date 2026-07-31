@@ -24,6 +24,7 @@ class LivewatchSyncService
         private readonly HttpClientInterface $httpClient,
         private readonly CategoryRepository $categoryRepository,
         private readonly ChannelRepository $channelRepository,
+        private readonly ChannelLogoService $channelLogoService,
     ) {}
 
     /**
@@ -147,6 +148,15 @@ class LivewatchSyncService
             $channel->setName($name);
             $channel->setIsActive(true);
             $channel->setIsWorking(true);
+
+            // Auto-fill a logo from iptv-org when the channel has none yet.
+            // Wikipedia fallback is skipped here to keep bulk syncs fast.
+            if (!$channel->getLogo()) {
+                $logo = $this->channelLogoService->resolve($name, $country, false);
+                if ($logo) {
+                    $channel->setLogo($logo);
+                }
+            }
 
             // Derive language from the RAW country value first (before we
             // normalize it below), only if it isn't already set, so manual

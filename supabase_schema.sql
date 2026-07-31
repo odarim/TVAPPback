@@ -71,7 +71,7 @@ CREATE TABLE IF NOT EXISTS channel (
     language       VARCHAR(10)  DEFAULT NULL,
     country        VARCHAR(100) DEFAULT NULL,
     is_geo_blocked BOOLEAN      NOT NULL,
-    logo           VARCHAR(255) DEFAULT NULL,
+    logo           VARCHAR(2048) DEFAULT NULL,
     is_active      BOOLEAN      NOT NULL,
     created_at     TIMESTAMP(0) WITHOUT TIME ZONE NOT NULL,
     category_id    UUID         DEFAULT NULL,

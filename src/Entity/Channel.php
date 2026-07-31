@@ -74,7 +74,7 @@ class Channel
     #[Groups(['channel:read', 'channel:write'])]
     private ?bool $isGeoBlocked = false;
 
-    #[ORM\Column(length: 255, nullable: true)]
+    #[ORM\Column(length: 2048, nullable: true)]
     #[Groups(['channel:read', 'channel:write'])]
     private ?string $logo = null;
 

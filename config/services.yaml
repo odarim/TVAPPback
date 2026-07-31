@@ -40,4 +40,8 @@ services:
     App\Controller\SettingsController:
         arguments:
             $projectDir: '%kernel.project_dir%'
+
+    App\Service\ChannelLogoService:
+        arguments:
+            $cacheDir: '%kernel.cache_dir%'
 

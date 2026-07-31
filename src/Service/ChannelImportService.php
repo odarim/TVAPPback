@@ -16,7 +16,8 @@ class ChannelImportService
         private EntityManagerInterface $em,
         private ChannelRepository $channelRepository,
         private CategoryRepository $categoryRepository,
-        private SluggerInterface $slugger
+        private SluggerInterface $slugger,
+        private ChannelLogoService $channelLogoService
     ) {
     }
 
@@ -71,7 +72,13 @@ class ChannelImportService
                 $channel->setCountry($item['country'] ?? 'us');
                 $channel->setIsGeoBlocked($item['isGeoBlocked'] ?? false);
                 $channel->setCategory($forcedCategory ?? $defaultCategory);
-                $channel->setLogo($item['logo'] ?? null);
+
+                // Auto-resolve a logo when none is provided in the payload
+                $logo = $item['logo'] ?? null;
+                if (!$logo) {
+                    $logo = $this->channelLogoService->resolve($item['name'], $item['country'] ?? null);
+                }
+                $channel->setLogo($logo);
  
                 // Handle streams
                 foreach ($channel->getStreams() as $stream) {
