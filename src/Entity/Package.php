@@ -58,6 +58,10 @@ class Package
     #[Groups(['package:read', 'package:write'])]
     private ?int $maxConnections = 1;
 
+    #[ORM\Column(options: ['default' => false])]
+    #[Groups(['package:read', 'package:write'])]
+    private ?bool $hasVodAccess = false;
+
     #[ORM\Column]
     #[Groups(['package:read', 'package:write'])]
     private ?bool $isActive = true;
@@ -149,6 +153,28 @@ class Package
         $this->isActive = $isActive;
 
         return $this;
+    }
+
+    public function isHasVodAccess(): ?bool
+    {
+        return $this->hasVodAccess;
+    }
+
+    public function setHasVodAccess(bool $hasVodAccess): static
+    {
+        $this->hasVodAccess = $hasVodAccess;
+
+        return $this;
+    }
+
+    /**
+     * Number of channels included in this package. Computed (not a mapped
+     * column) so the read model stays lightweight and free of circular refs.
+     */
+    #[Groups(['package:read'])]
+    public function getChannelCount(): int
+    {
+        return $this->channels->count();
     }
 
     /**
