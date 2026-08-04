@@ -6,8 +6,9 @@ cd /app
 # ---------------------------------------------------------------------------
 # Select the database provider.
 #
-# DB_PROVIDER switches the connection target without any code change — both are
+# DB_PROVIDER switches the connection target without any code change — all are
 # plain PostgreSQL, so the app stays 100% Postgres-compatible:
+#   DB_PROVIDER=aiven    -> uses $AIVEN_DATABASE_URL     (Aiven "Service URI")
 #   DB_PROVIDER=supabase -> uses $SUPABASE_DATABASE_URL  (Session pooler URL)
 #   DB_PROVIDER=render   -> uses $RENDER_DATABASE_URL    (Render injects this)
 #
@@ -20,29 +21,30 @@ _selected_provider=""
 if [ -z "$DATABASE_URL" ]; then
 	_selected_provider="${DB_PROVIDER:-render}"
 	case "$_selected_provider" in
+		aiven)    export DATABASE_URL="$AIVEN_DATABASE_URL" ;;
 		supabase) export DATABASE_URL="$SUPABASE_DATABASE_URL" ;;
 		render)   export DATABASE_URL="$RENDER_DATABASE_URL" ;;
-		*)        echo "[entrypoint] ERROR: unknown DB_PROVIDER '${DB_PROVIDER}' (expected 'supabase' or 'render')."; exit 1 ;;
+		*)        echo "[entrypoint] ERROR: unknown DB_PROVIDER '${DB_PROVIDER}' (expected 'aiven', 'supabase' or 'render')."; exit 1 ;;
 	esac
 
 	if [ -z "$DATABASE_URL" ]; then
 		echo "[entrypoint] ERROR: DB_PROVIDER='${_selected_provider}' selected but its connection URL is empty."
-		echo "[entrypoint]        Set SUPABASE_DATABASE_URL / RENDER_DATABASE_URL, or set DATABASE_URL directly."
+		echo "[entrypoint]        Set AIVEN_DATABASE_URL / SUPABASE_DATABASE_URL / RENDER_DATABASE_URL, or set DATABASE_URL directly."
 		exit 1
 	fi
 fi
 
 # ---------------------------------------------------------------------------
 # Normalize DATABASE_URL.
-#  * Supabase requires TLS -> ensure sslmode=require. Applied ONLY when we
-#    selected the Supabase provider here, never to a user-supplied URL (a local
-#    non-SSL Postgres would break).
+#  * Supabase and Aiven require TLS -> ensure sslmode=require. Applied ONLY
+#    when we selected one of those providers here, never to a user-supplied
+#    URL (a local non-SSL Postgres would break).
 #  * Doctrine/DBAL needs a `serverVersion` to pick the platform without an extra
-#    round-trip; append it if missing. Default 17 for Supabase, 16 otherwise
+#    round-trip; append it if missing. Default 17 for Supabase/Aiven, 16 otherwise
 #    (both resolve to the modern PostgreSQL platform, so a mismatch is harmless).
 # ---------------------------------------------------------------------------
 if [ -n "$DATABASE_URL" ]; then
-	if [ "$_selected_provider" = "supabase" ]; then
+	if [ "$_selected_provider" = "supabase" ] || [ "$_selected_provider" = "aiven" ]; then
 		case "$DATABASE_URL" in
 			*sslmode=*) : ;; # already specified, leave untouched
 			*\?*) export DATABASE_URL="${DATABASE_URL}&sslmode=require" ;;
@@ -51,7 +53,9 @@ if [ -n "$DATABASE_URL" ]; then
 	fi
 
 	_default_sv=16
-	[ "$_selected_provider" = "supabase" ] && _default_sv=17
+	case "$_selected_provider" in
+		supabase|aiven) _default_sv=17 ;;
+	esac
 	case "$DATABASE_URL" in
 		*serverVersion=*) : ;; # already specified, leave untouched
 		*\?*) export DATABASE_URL="${DATABASE_URL}&serverVersion=${DATABASE_SERVER_VERSION:-$_default_sv}&charset=utf8" ;;

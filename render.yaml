@@ -38,11 +38,19 @@ services:
         generateValue: true
 
       # --- Database provider switch --------------------------------------
-      # Flip between Supabase and the Render-managed Postgres with no code
-      # change. The entrypoint reads DB_PROVIDER and picks the matching URL,
-      # then normalizes it (sslmode + serverVersion). Both are plain Postgres.
+      # Flip between Aiven, Supabase and the Render-managed Postgres with no
+      # code change. The entrypoint reads DB_PROVIDER and picks the matching
+      # URL, then normalizes it (sslmode + serverVersion). All are plain
+      # Postgres.
       - key: DB_PROVIDER
-        value: supabase          # set to "render" to use the Render database
+        value: aiven             # one of: aiven | supabase | render
+
+      # Aiven for PostgreSQL connection URI. Copy it from the Aiven console:
+      # service > Overview > Connection information > "Service URI", then
+      # paste it in the Render dashboard. Looks like:
+      # postgres://avnadmin:<password>@<service>-<project>.<region>.aivencloud.com:<port>/defaultdb?sslmode=require
+      - key: AIVEN_DATABASE_URL
+        sync: false
 
       # Render-managed PostgreSQL connection (kept as a fallback option).
       - key: RENDER_DATABASE_URL
@@ -57,7 +65,7 @@ services:
       - key: SUPABASE_DATABASE_URL
         sync: false
 
-      # Optional override; defaults to 17 (Supabase) / 16 (Render) in the entrypoint.
+      # Optional override; defaults to 17 (Supabase/Aiven) / 16 (Render) in the entrypoint.
       # - key: DATABASE_SERVER_VERSION
       #   value: "17"
 
