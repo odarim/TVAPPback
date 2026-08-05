@@ -3,11 +3,13 @@
 Everything is prepared in the repo; the only inputs needed are the two
 connection URLs. The copy itself is one command (step 3).
 
-> **Status at the time of writing (2026-08-04):** the Render database
-> (`tvapp-db`, host `dpg-d92ck8btqb8s73f91vpg-a.frankfurt-postgres.render.com`)
-> **refuses external connections** — the TLS handshake succeeds but the
-> connection is dropped before authentication. See step 2 before running the
-> migration.
+> **Status (2026-08-05):** the Render database (`tvapp-db`) is **gone** — its
+> internal hostname `dpg-d92ck8btqb8s73f91vpg-a` no longer resolves inside
+> Render's network (deploys failed with "could not translate host name"), and
+> external connections were already being dropped before authentication.
+> Unless the Render dashboard still shows the instance in a recoverable
+> (suspended) state, skip step 2/3 and use one of the fallbacks in step 2 —
+> the Supabase source, or a fresh empty schema on Aiven.
 
 ## 1. Create the Aiven service and get its URL
 
@@ -40,12 +42,13 @@ dashboard → PostgreSQL `tvapp-db`, check:
 - Confirm the **External Database URL** still matches the one in `.env.local`
   (credentials rotate if the instance was recreated).
 
-**If the Render DB is already gone:** the app was last configured with
-`DB_PROVIDER=supabase`, so the live data may actually be in Supabase — the
-same script migrates Supabase → Aiven, just use the Supabase Session-pooler
-URL as the source. If there is no surviving data anywhere, provision an empty
-schema instead: run `supabase_schema.sql` against the Aiven DB (it is plain
-Postgres, nothing Supabase-specific) and seed with `RUN_SEED=true`.
+**If the Render DB is already gone:** if the app ever ran with
+`DB_PROVIDER=supabase`, the live data may be in Supabase — the same script
+migrates Supabase → Aiven, just use the Supabase Session-pooler URL as the
+source. If there is no surviving data anywhere, start empty: point the app at
+Aiven (step 4) and the boot-time `doctrine:migrations:migrate` creates the
+full schema on its own; set `RUN_SEED=true` for the first boot to seed the
+admin user and base data, then set it back to `false`.
 
 ## 3. Run the migration
 
@@ -89,5 +92,7 @@ default, override with `DATABASE_SERVER_VERSION`).
   (dying) Render DB.
 - Keep the last `var/export/db-*.dump` somewhere safe; the Aiven free plan is
   a single node — that dump is your backup until you upgrade.
-- Once Aiven is confirmed healthy, the `tvapp-db` block in `render.yaml` and
-  `RENDER_DATABASE_URL` can be removed (kept for now as a fallback).
+- The `tvapp-db` block and `RENDER_DATABASE_URL` have been removed from
+  `render.yaml`, and the entrypoint's default provider is now `aiven` — a
+  container without any `DB_PROVIDER` set no longer falls back to the dead
+  Render database.

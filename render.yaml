@@ -4,12 +4,9 @@
 # Deploy by connecting this repo to Render and choosing "New > Blueprint",
 # or let the GitHub Actions workflow trigger deploys via a Deploy Hook.
 
-databases:
-  - name: tvapp-db
-    databaseName: tv_streaming
-    user: tvapp
-    plan: free                # upgrade to "basic" or higher for production
-    postgresMajorVersion: "16"
+# NOTE: the previously-declared Render Postgres (tvapp-db) expired and was
+# removed — the database now lives on Aiven for PostgreSQL (AIVEN_DATABASE_URL
+# below). Do not re-add a `databases:` block unless you intend to move back.
 
 services:
   - type: web
@@ -51,12 +48,6 @@ services:
       # postgres://avnadmin:<password>@<service>-<project>.<region>.aivencloud.com:<port>/defaultdb?sslmode=require
       - key: AIVEN_DATABASE_URL
         sync: false
-
-      # Render-managed PostgreSQL connection (kept as a fallback option).
-      - key: RENDER_DATABASE_URL
-        fromDatabase:
-          name: tvapp-db
-          property: connectionString
 
       # Supabase "Session pooler" connection string (port 5432). Paste it in the
       # Render dashboard — Supabase > Project Settings > Database > Connect >

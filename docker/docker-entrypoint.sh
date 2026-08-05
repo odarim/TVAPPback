@@ -19,7 +19,9 @@ cd /app
 # was supplied explicitly, so we never rewrite a user-provided URL below.
 _selected_provider=""
 if [ -z "$DATABASE_URL" ]; then
-	_selected_provider="${DB_PROVIDER:-render}"
+	# Default to aiven: the Render-managed DB (tvapp-db) no longer exists, so
+	# falling back to it would fail with an unresolvable internal hostname.
+	_selected_provider="${DB_PROVIDER:-aiven}"
 	case "$_selected_provider" in
 		aiven)    export DATABASE_URL="$AIVEN_DATABASE_URL" ;;
 		supabase) export DATABASE_URL="$SUPABASE_DATABASE_URL" ;;
