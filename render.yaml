@@ -4,12 +4,9 @@
 # Deploy by connecting this repo to Render and choosing "New > Blueprint",
 # or let the GitHub Actions workflow trigger deploys via a Deploy Hook.
 
-databases:
-  - name: tvapp-db
-    databaseName: tv_streaming
-    user: tvapp
-    plan: free                # upgrade to "basic" or higher for production
-    postgresMajorVersion: "16"
+# NOTE: the previously-declared Render Postgres (tvapp-db) expired and was
+# removed — the database now lives on Aiven for PostgreSQL (AIVEN_DATABASE_URL
+# below). Do not re-add a `databases:` block unless you intend to move back.
 
 services:
   - type: web
@@ -38,17 +35,19 @@ services:
         generateValue: true
 
       # --- Database provider switch --------------------------------------
-      # Flip between Supabase and the Render-managed Postgres with no code
-      # change. The entrypoint reads DB_PROVIDER and picks the matching URL,
-      # then normalizes it (sslmode + serverVersion). Both are plain Postgres.
+      # Flip between Aiven, Supabase and the Render-managed Postgres with no
+      # code change. The entrypoint reads DB_PROVIDER and picks the matching
+      # URL, then normalizes it (sslmode + serverVersion). All are plain
+      # Postgres.
       - key: DB_PROVIDER
-        value: supabase          # set to "render" to use the Render database
+        value: aiven             # one of: aiven | supabase | render
 
-      # Render-managed PostgreSQL connection (kept as a fallback option).
-      - key: RENDER_DATABASE_URL
-        fromDatabase:
-          name: tvapp-db
-          property: connectionString
+      # Aiven for PostgreSQL connection URI. Copy it from the Aiven console:
+      # service > Overview > Connection information > "Service URI", then
+      # paste it in the Render dashboard. Looks like:
+      # postgres://avnadmin:<password>@<service>-<project>.<region>.aivencloud.com:<port>/defaultdb?sslmode=require
+      - key: AIVEN_DATABASE_URL
+        sync: false
 
       # Supabase "Session pooler" connection string (port 5432). Paste it in the
       # Render dashboard — Supabase > Project Settings > Database > Connect >
@@ -57,7 +56,7 @@ services:
       - key: SUPABASE_DATABASE_URL
         sync: false
 
-      # Optional override; defaults to 17 (Supabase) / 16 (Render) in the entrypoint.
+      # Optional override; defaults to 17 (Supabase/Aiven) / 16 (Render) in the entrypoint.
       # - key: DATABASE_SERVER_VERSION
       #   value: "17"
 
