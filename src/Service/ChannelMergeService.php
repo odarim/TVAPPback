@@ -13,8 +13,10 @@ class ChannelMergeService
     ) {}
 
     /**
-     * Merges channels with the exact same slug.
-     * Keeps the first one found, moves all streams to it, and deletes the rest.
+     * Merges channels that share the same normalized name.
+     * Imported slugs carry a unique nanoid suffix (e.g. "france-2-5ccf7f3d"),
+     * so matching on the slug would never find duplicates across sync runs.
+     * Keeps the first channel found, moves all unique streams to it, and deletes the rest.
      * 
      * @return array{total_merged: int, total_deleted: int}
      */
@@ -22,20 +24,20 @@ class ChannelMergeService
     {
         $channels = $this->channelRepository->findAll();
         
-        $slugMap = [];
+        $nameMap = [];
         $stats = ['total_merged' => 0, 'total_deleted' => 0];
 
         foreach ($channels as $channel) {
-            $slug = $channel->getSlug();
-            if (!$slug) {
+            $name = mb_strtolower(trim($channel->getName() ?? ''));
+            if ($name === '') {
                 continue;
             }
 
-            if (!isset($slugMap[$slug])) {
-                $slugMap[$slug] = $channel;
+            if (!isset($nameMap[$name])) {
+                $nameMap[$name] = $channel;
             } else {
                 // We found a duplicate
-                $master = $slugMap[$slug];
+                $master = $nameMap[$name];
                 
                 // Move streams from duplicate to master
                 foreach ($channel->getStreams() as $stream) {
@@ -49,7 +51,9 @@ class ChannelMergeService
                     }
 
                     if (!$streamExists) {
-                        $stream->setLabel(CountryLanguageMapper::getStreamLabel($channel->getLanguage(), $channel->getCountry()));
+                        if (!$stream->getLabel()) {
+                            $stream->setLabel(CountryLanguageMapper::getStreamLabel($channel->getLanguage(), $channel->getCountry()));
+                        }
                         $master->addStream($stream);
                         $stats['total_merged']++;
                     }
