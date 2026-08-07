@@ -11,6 +11,7 @@
 --   Version20260710063121  (torrent_session)
 --   Version20260722053848  (watch_history)
 --   Version20260728123901  (adult-content lock: user + device columns)
+--   Version20260806000000  (channel_viewer: live "watching now" viewership)
 --
 -- Notes
 --  * Column types / index names / constraint names match Doctrine exactly, so
@@ -141,6 +142,17 @@ CREATE TABLE IF NOT EXISTS active_session (
     PRIMARY KEY (id)
 );
 
+CREATE TABLE IF NOT EXISTS channel_viewer (
+    id                UUID        NOT NULL,
+    channel_id        UUID        NOT NULL,
+    user_id           UUID        DEFAULT NULL,
+    token             VARCHAR(64) NOT NULL,
+    device_id         VARCHAR(128) DEFAULT NULL,
+    started_at        TIMESTAMP(0) WITHOUT TIME ZONE NOT NULL,
+    last_heartbeat_at TIMESTAMP(0) WITHOUT TIME ZONE NOT NULL,
+    PRIMARY KEY (id)
+);
+
 CREATE TABLE IF NOT EXISTS torrent_session (
     id            UUID        NOT NULL,
     session_id    VARCHAR(36) NOT NULL,
@@ -194,6 +206,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS UNIQ_ACTIVE_SESSION_TOKEN ON active_session (t
 CREATE INDEX        IF NOT EXISTS IDX_ACTIVE_SESSION_USER   ON active_session (user_id);
 CREATE INDEX        IF NOT EXISTS IDX_ACTIVE_SESSION_DEVICE ON active_session (device_id);
 
+CREATE UNIQUE INDEX IF NOT EXISTS UNIQ_CHANNEL_VIEWER_TOKEN           ON channel_viewer (token);
+CREATE INDEX        IF NOT EXISTS IDX_CHANNEL_VIEWER_CHANNEL_HEARTBEAT ON channel_viewer (channel_id, last_heartbeat_at);
+CREATE INDEX        IF NOT EXISTS IDX_CHANNEL_VIEWER_USER             ON channel_viewer (user_id);
+
 CREATE UNIQUE INDEX IF NOT EXISTS UNIQ_11AF26F3613FECDF ON torrent_session (session_id);
 CREATE UNIQUE INDEX IF NOT EXISTS UNIQ_11AF26F3105F4450 ON torrent_session (stream_token);
 CREATE INDEX        IF NOT EXISTS IDX_11AF26F3A76ED395  ON torrent_session (user_id);
@@ -224,6 +240,9 @@ ALTER TABLE pending_payment ADD CONSTRAINT FK_A647739CF44CABFF FOREIGN KEY (pack
 ALTER TABLE active_session  ADD CONSTRAINT FK_ACTIVE_SESSION_USER   FOREIGN KEY (user_id)   REFERENCES "user" (id);
 ALTER TABLE active_session  ADD CONSTRAINT FK_ACTIVE_SESSION_DEVICE FOREIGN KEY (device_id) REFERENCES device (id);
 
+ALTER TABLE channel_viewer ADD CONSTRAINT FK_CHANNEL_VIEWER_CHANNEL FOREIGN KEY (channel_id) REFERENCES channel (id) ON DELETE CASCADE;
+ALTER TABLE channel_viewer ADD CONSTRAINT FK_CHANNEL_VIEWER_USER    FOREIGN KEY (user_id)    REFERENCES "user" (id) ON DELETE CASCADE;
+
 ALTER TABLE torrent_session ADD CONSTRAINT FK_11AF26F3A76ED395 FOREIGN KEY (user_id)     REFERENCES "user" (id);
 
 ALTER TABLE watch_history   ADD CONSTRAINT FK_DE44EFD8A76ED395  FOREIGN KEY (user_id)     REFERENCES "user" (id) ON DELETE CASCADE;
@@ -248,7 +267,8 @@ INSERT INTO doctrine_migration_versions (version, executed_at, execution_time) V
     ('DoctrineMigrations\Version20260702000000', NOW(), 0),
     ('DoctrineMigrations\Version20260710063121', NOW(), 0),
     ('DoctrineMigrations\Version20260722053848', NOW(), 0),
-    ('DoctrineMigrations\Version20260728123901', NOW(), 0)
+    ('DoctrineMigrations\Version20260728123901', NOW(), 0),
+    ('DoctrineMigrations\Version20260806000000', NOW(), 0)
 ON CONFLICT (version) DO NOTHING;
 
 COMMIT;

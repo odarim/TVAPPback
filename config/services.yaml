@@ -44,4 +44,9 @@ services:
     App\Service\ChannelLogoService:
         arguments:
             $cacheDir: '%kernel.cache_dir%'
+
+    App\Serializer\ChannelNormalizer:
+        decorates: 'api_platform.serializer.normalizer.item'
+        arguments:
+            - '@App\Serializer\ChannelNormalizer.inner'
 

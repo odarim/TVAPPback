@@ -98,6 +98,9 @@ class Channel
     #[Groups(['channel:read', 'channel:write'])]
     private Collection $packages;
 
+    #[ORM\OneToMany(mappedBy: 'channel', targetEntity: ChannelViewer::class, cascade: ['remove'])]
+    private Collection $viewers;
+
     #[ORM\Column(options: ['default' => true])]
     #[Groups(['channel:read', 'channel:write'])]
     private ?bool $isWorking = true;
@@ -110,6 +113,7 @@ class Channel
     {
         $this->streams = new ArrayCollection();
         $this->packages = new ArrayCollection();
+        $this->viewers = new ArrayCollection();
         $this->createdAt = new \DateTime();
         $this->viewCount = 0;
         $this->isWorking = true;
@@ -300,6 +304,14 @@ class Channel
     public function getViewCount(): ?int
     {
         return $this->viewCount;
+    }
+
+    /**
+     * @return Collection<int, ChannelViewer>
+     */
+    public function getViewers(): Collection
+    {
+        return $this->viewers;
     }
 
     public function setViewCount(int $viewCount): static
