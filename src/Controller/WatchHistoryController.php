@@ -69,6 +69,32 @@ final class WatchHistoryController extends AbstractController
         ]);
     }
 
+    #[Route('/{tmdbId}', name: 'delete_watch_history', methods: ['DELETE'])]
+    public function deleteHistory(Request $request, int $tmdbId): JsonResponse
+    {
+        $user = $this->getUser();
+        if (!$user) {
+            return $this->json(['error' => 'Unauthorized'], 401);
+        }
+
+        $criteria = ['user' => $user, 'tmdbId' => $tmdbId];
+
+        // Optional type filter (?type=movie|series) so a movie and a series
+        // sharing the same tmdb_id can be removed independently.
+        $type = $request->query->get('type');
+        if (in_array($type, ['movie', 'series'], true)) {
+            $criteria['type'] = $type;
+        }
+
+        $records = $this->historyRepository->findBy($criteria);
+        foreach ($records as $record) {
+            $this->entityManager->remove($record);
+        }
+        $this->entityManager->flush();
+
+        return $this->json(['status' => 'success', 'deleted' => count($records)]);
+    }
+
     #[Route('/mark', name: 'mark_watch_history', methods: ['POST'])]
     public function markHistory(Request $request): JsonResponse
     {
