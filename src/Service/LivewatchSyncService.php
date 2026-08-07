@@ -50,14 +50,39 @@ class LivewatchSyncService
     }
 
     /**
-     * Processes a specific chunk of channels and categories.
-     * @return array{categories_synced: int, created: int, updated: int, skipped: int, streams_added: int}
+     * Fetches the raw livewatch API and creates the Category entities from its
+     * category list only (no channels are imported). Lets admins pre-create the
+     * livewatch categories so their own JSON can be matched to them.
+     *
+     * @return array{category: string, created: int}
      */
-    public function processChunk(array $apiCats, array $channels): array
+    public function syncCategoriesOnly(): array
     {
-        // ── 1. Upsert categories with fuzzy matching ─────────────────────────
+        $data = $this->fetchRawData();
+        $apiCats = $data['categories'] ?? [];
+
+        $result = $this->syncCategories($apiCats);
+        $this->em->flush();
+
+        return [
+            'categories' => array_keys($result['map']),
+            'created'    => $result['created'],
+        ];
+    }
+
+    /**
+     * Upserts the given category names into Category entities (fuzzy matching)
+     * and returns a map of raw name => Category. When processing channels the
+     * same map is reused so the channel's category lookup is consistent.
+     *
+     * @param array $apiCats
+     * @return array{map: array<string, Category>, created: int}
+     */
+    public function syncCategories(array $apiCats): array
+    {
         $categoryMap = []; // name → Category entity
         $allExisting = $this->categoryRepository->findAll();
+        $created = 0;
 
         foreach ($apiCats as $catName) {
             $catName = trim($catName);
@@ -94,10 +119,24 @@ class LivewatchSyncService
                 $this->em->persist($cat);
                 $categoryMap[$catName] = $cat;
                 $allExisting[] = $cat; // Add to pool for subsequent matches
+                $created++;
             }
         }
 
         $this->em->flush(); // flush new categories so they get IDs
+
+        return ['map' => $categoryMap, 'created' => $created];
+    }
+
+    /**
+     * Processes a specific chunk of channels and categories.
+     * @return array{categories_synced: int, created: int, updated: int, skipped: int, streams_added: int}
+     */
+    public function processChunk(array $apiCats, array $channels): array
+    {
+        // ── 1. Upsert categories with fuzzy matching ─────────────────────────
+        $categoryResult = $this->syncCategories($apiCats);
+        $categoryMap = $categoryResult['map'];
 
         // ── 2. Upsert channels ────────────────────────────────────────────────
         $stats = [
@@ -196,6 +235,7 @@ class LivewatchSyncService
                     $stream = new ChannelStream();
                     $stream->setType($source);
                     $stream->setUrl($embedUrl);
+                    $stream->setLabel(CountryLanguageMapper::getStreamLabel($channel->getLanguage(), $country));
                     $channel->addStream($stream);
                     $stats['streams_added']++;
                 }
@@ -265,6 +305,12 @@ class LivewatchSyncService
             if ($newCountry !== $originalCountry) {
                 $channel->setCountry($newCountry);
                 $stats['country_updated']++;
+            }
+
+            // Re-label every stream so merged channels show distinct sources.
+            foreach ($channel->getStreams() as $stream) {
+                $label = CountryLanguageMapper::getStreamLabel($channel->getLanguage(), $newCountry);
+                $stream->setLabel($label);
             }
 
             if (++$batchCount % 100 === 0) {

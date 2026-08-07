@@ -39,6 +39,13 @@ class ChannelImportService
             $this->em->flush();
         }
  
+        // Build a lookup of existing categories (slug => Category) so items can
+        // be matched to the livewatch-created categories by their "category" field.
+        $existingBySlug = [];
+        foreach ($this->categoryRepository->findAll() as $existingCat) {
+            $existingBySlug[$existingCat->getSlug()] = $existingCat;
+        }
+
         foreach ($data as $item) {
             try {
                 $nanoid = $item['nanoid'] ?? null;
@@ -71,7 +78,11 @@ class ChannelImportService
                 $channel->setLanguage($item['language'] ?? 'eng');
                 $channel->setCountry($item['country'] ?? 'us');
                 $channel->setIsGeoBlocked($item['isGeoBlocked'] ?? false);
-                $channel->setCategory($forcedCategory ?? $defaultCategory);
+
+                // Resolve the item's category: match its "category" field to an
+                // existing category by slug (case-insensitive), else fall back to
+                // the category forced by the caller, else Uncategorized.
+                $channel->setCategory($this->resolveCategory($item['category'] ?? null, $forcedCategory ?? $defaultCategory, $existingBySlug));
 
                 // Auto-resolve a logo when none is provided in the payload
                 $logo = $item['logo'] ?? null;
@@ -132,5 +143,22 @@ class ChannelImportService
         $this->em->flush();
  
         return $stats;
+    }
+
+    /**
+     * Resolves an item's category field to an existing Category by slug
+     * (case-insensitive, so "General", "general" and "GENERAL" all match
+     * the same entity). Falls back to the provided default when no match
+     * or when the item has no category.
+     */
+    private function resolveCategory(mixed $category, Category $fallback, array $existingBySlug): Category
+    {
+        if (!$category || !is_string($category) || trim($category) === '') {
+            return $fallback;
+        }
+
+        $slug = strtolower(trim($this->slugger->slug($category)->toString()));
+
+        return $existingBySlug[$slug] ?? $fallback;
     }
 }

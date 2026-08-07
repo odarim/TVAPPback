@@ -316,6 +316,61 @@ class CountryLanguageMapper
         return mb_convert_case(trim($original), MB_CASE_TITLE, 'UTF-8');
     }
 
+    /**
+     * ISO 639-2/B language code => display flag + English name.
+     * Used to label the individual sources of a merged channel so users
+     * can tell them apart (e.g. "🇬🇧 English", "🇫🇷 French").
+     */
+    private const LANG_DISPLAY = [
+        'eng' => 'English', 'fra' => 'French', 'spa' => 'Spanish', 'deu' => 'German',
+        'ita' => 'Italian', 'tur' => 'Turkish', 'rus' => 'Russian', 'ara' => 'Arabic',
+        'por' => 'Portuguese', 'zho' => 'Chinese', 'jpn' => 'Japanese', 'kor' => 'Korean',
+        'hin' => 'Hindi', 'ben' => 'Bengali', 'urd' => 'Urdu', 'fas' => 'Persian',
+        'heb' => 'Hebrew', 'nld' => 'Dutch', 'swe' => 'Swedish', 'nor' => 'Norwegian',
+        'dan' => 'Danish', 'fin' => 'Finnish', 'pol' => 'Polish', 'ces' => 'Czech',
+        'slk' => 'Slovak', 'hun' => 'Hungarian', 'ell' => 'Greek', 'ron' => 'Romanian',
+        'bul' => 'Bulgarian', 'srp' => 'Serbian', 'hrv' => 'Croatian', 'ukr' => 'Ukrainian',
+        'kat' => 'Georgian', 'hye' => 'Armenian', 'aze' => 'Azerbaijani', 'sqi' => 'Albanian',
+        'bos' => 'Bosnian', 'mak' => 'Macedonian', 'lit' => 'Lithuanian', 'lav' => 'Latvian',
+        'est' => 'Estonian', 'mlt' => 'Maltese', 'isl' => 'Icelandic', 'vie' => 'Vietnamese',
+        'tha' => 'Thai', 'msa' => 'Malay', 'ind' => 'Indonesian', 'fil' => 'Filipino',
+        'khm' => 'Khmer', 'lao' => 'Lao', 'mya' => 'Burmese', 'nep' => 'Nepali',
+        'sin' => 'Sinhala', 'tam' => 'Tamil', 'tel' => 'Telugu', 'mar' => 'Marathi',
+        'amh' => 'Amharic', 'swa' => 'Swahili', 'kin' => 'Kinyarwanda', 'mlg' => 'Malagasy',
+        'som' => 'Somali', 'div' => 'Dhivehi', 'tgk' => 'Tajik', 'uzb' => 'Uzbek',
+        'tuk' => 'Turkmen', 'kir' => 'Kyrgyz', 'mon' => 'Mongolian', 'kat' => 'Georgian',
+        'bis' => 'Bisaya', 'ban' => 'Balinese', 'ces' => 'Czech', 'pus' => 'Pashto',
+        'slv' => 'Slovenian', 'cat' => 'Catalan', 'glg' => 'Galician', 'eus' => 'Basque',
+        'cym' => 'Welsh', 'gla' => 'Gaelic', 'dzo' => 'Dzongkha', 'tir' => 'Tigrinya',
+        'sqi' => 'Albanian', 'kaz' => 'Kazakh',
+    ];
+
+    /**
+     * Builds a short, human-readable label for a merged channel stream so
+     * users can tell the sources apart in the player. Prefers a language
+     * name and falls back to the country, then null.
+     */
+    public static function getStreamLabel(?string $language, ?string $country): ?string
+    {
+        $lang = $language !== null ? trim($language) : '';
+        if (isset(self::LANG_DISPLAY[$lang])) {
+            $name = self::LANG_DISPLAY[$lang];
+            $countryName = self::getFullCountryName($country);
+            if ($countryName !== 'Unknown') {
+                return $name . ' (' . $countryName . ')';
+            }
+
+            return $name;
+        }
+
+        $countryName = self::getFullCountryName($country);
+        if ($countryName !== 'Unknown') {
+            return $countryName;
+        }
+
+        return null;
+    }
+
     private static function normalize(?string $value): string
     {
         if ($value === null) {

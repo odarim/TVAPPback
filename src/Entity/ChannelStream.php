@@ -30,6 +30,10 @@ class ChannelStream
     #[Groups(['stream:read', 'stream:write', 'channel:read'])]
     private ?string $url = null;
 
+    #[ORM\Column(length: 255, nullable: true)]
+    #[Groups(['stream:read', 'stream:write', 'channel:read'])]
+    private ?string $label = null;
+
     #[ORM\ManyToOne(inversedBy: 'streams')]
     #[ORM\JoinColumn(nullable: false)]
     private ?Channel $channel = null;
@@ -59,6 +63,18 @@ class ChannelStream
     public function setUrl(string $url): static
     {
         $this->url = $url;
+
+        return $this;
+    }
+
+    public function getLabel(): ?string
+    {
+        return $this->label;
+    }
+
+    public function setLabel(?string $label): static
+    {
+        $this->label = $label;
 
         return $this;
     }

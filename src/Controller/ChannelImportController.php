@@ -67,6 +67,25 @@ class ChannelImportController extends AbstractController
     }
 
     /**
+     * Create the Category entities from the LiveWatch category list only
+     * (no channels are imported), so admins can match their own JSON to them.
+     */
+    #[Route('/category/sync-livewatch', name: 'admin_category_sync_livewatch', methods: ['POST'])]
+    public function syncCategoriesFromLivewatch(): JsonResponse
+    {
+        try {
+            $result = $this->livewatchSyncService->syncCategoriesOnly();
+            return $this->json([
+                'message' => 'Categories synced from LiveWatch',
+                'created' => $result['created'],
+                'categories' => $result['categories'],
+            ]);
+        } catch (\Throwable $e) {
+            return $this->json(['error' => 'Category sync failed: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
      * Process a chunk of livewatch channels.
      */
     #[Route('/channel/sync-livewatch-chunk', name: 'admin_channel_sync_livewatch_chunk', methods: ['POST'])]

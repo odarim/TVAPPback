@@ -5,7 +5,6 @@ namespace App\Service;
 use App\Entity\Channel;
 use App\Repository\ChannelRepository;
 use Doctrine\ORM\EntityManagerInterface;
-
 class ChannelMergeService
 {
     public function __construct(
@@ -50,6 +49,7 @@ class ChannelMergeService
                     }
 
                     if (!$streamExists) {
+                        $stream->setLabel(CountryLanguageMapper::getStreamLabel($channel->getLanguage(), $channel->getCountry()));
                         $master->addStream($stream);
                         $stats['total_merged']++;
                     }
