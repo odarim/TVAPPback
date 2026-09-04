@@ -41,6 +41,10 @@ services:
         arguments:
             $projectDir: '%kernel.project_dir%'
 
+    App\Controller\VodSourceController:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+
     App\Service\ChannelLogoService:
         arguments:
             $cacheDir: '%kernel.cache_dir%'

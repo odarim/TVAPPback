@@ -22,6 +22,15 @@ use Symfony\Component\Routing\Annotation\Route;
 #[Route('/api/settings')]
 final class SettingsController extends AbstractController
 {
+    private const DEFAULT_SETTINGS = [
+        'anti_devtools_enabled'      => true,
+        'adult_lock_timeout_minutes' => 30,
+        'vod_sources' => [
+            'enabled'          => ['alpha' => true, 'beta' => true, 'charlie' => true],
+            'disabled_servers' => [],
+        ],
+    ];
+
     public function __construct(private readonly string $projectDir) {}
 
     // ─── helpers ────────────────────────────────────────────────────────────
@@ -36,18 +45,20 @@ final class SettingsController extends AbstractController
         $path = $this->getSettingsFilePath();
 
         if (!file_exists($path)) {
-            return ['anti_devtools_enabled' => true];
+            return self::DEFAULT_SETTINGS;
         }
 
         try {
             $content = file_get_contents($path);
             $data    = json_decode((string) $content, true);
 
-            return is_array($data)
-                ? array_merge(['anti_devtools_enabled' => true], $data)
-                : ['anti_devtools_enabled' => true];
+            if (!is_array($data)) {
+                return self::DEFAULT_SETTINGS;
+            }
+
+            return array_merge(self::DEFAULT_SETTINGS, $data);
         } catch (\Throwable) {
-            return ['anti_devtools_enabled' => true];
+            return self::DEFAULT_SETTINGS;
         }
     }
 
@@ -67,7 +78,7 @@ final class SettingsController extends AbstractController
 
     /**
      * Public endpoint — no auth required.
-     * Only exposes booleans that are safe for the client to read.
+     * Only exposes booleans and non-sensitive config safe for the client.
      */
     #[Route('/public', name: 'app_settings_public', methods: ['GET'])]
     public function getPublicSettings(): JsonResponse
@@ -75,7 +86,12 @@ final class SettingsController extends AbstractController
         $settings = $this->readSettings();
 
         return $this->json([
-            'anti_devtools_enabled' => (bool) ($settings['anti_devtools_enabled'] ?? true),
+            'anti_devtools_enabled'      => (bool) ($settings['anti_devtools_enabled'] ?? true),
+            'adult_lock_timeout_minutes' => (int) ($settings['adult_lock_timeout_minutes'] ?? 30),
+            'vod_sources' => [
+                'enabled'          => $settings['vod_sources']['enabled'] ?? self::DEFAULT_SETTINGS['vod_sources']['enabled'],
+                'disabled_servers' => $settings['vod_sources']['disabled_servers'] ?? [],
+            ],
         ]);
     }
 
@@ -97,6 +113,25 @@ final class SettingsController extends AbstractController
 
         if (array_key_exists('anti_devtools_enabled', $data)) {
             $settings['anti_devtools_enabled'] = (bool) $data['anti_devtools_enabled'];
+        }
+
+        if (array_key_exists('adult_lock_timeout_minutes', $data)) {
+            $settings['adult_lock_timeout_minutes'] = max(0, (int) $data['adult_lock_timeout_minutes']);
+        }
+
+        if (array_key_exists('vod_sources', $data)) {
+            $vodInput = $data['vod_sources'];
+
+            if (isset($vodInput['enabled']) && is_array($vodInput['enabled'])) {
+                $settings['vod_sources']['enabled'] = array_merge(
+                    $settings['vod_sources']['enabled'] ?? self::DEFAULT_SETTINGS['vod_sources']['enabled'],
+                    $vodInput['enabled']
+                );
+            }
+
+            if (isset($vodInput['disabled_servers']) && is_array($vodInput['disabled_servers'])) {
+                $settings['vod_sources']['disabled_servers'] = array_values(array_unique(array_map('strtolower', $vodInput['disabled_servers'])));
+            }
         }
 
         $this->saveSettings($settings);

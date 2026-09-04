@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Controller;
 
 use App\Entity\Device;
@@ -7,6 +9,8 @@ use App\Entity\User;
 use App\Repository\ActiveSessionRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Contracts\Cache\CacheInterface;
+use Symfony\Contracts\Cache\ItemInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -15,23 +19,72 @@ use Symfony\Component\Routing\Attribute\Route;
 #[Route('/api/adult-lock')]
 class AdultLockController extends AbstractController
 {
+    private const MAX_ATTEMPTS = 5;
+    private const LOCKOUT_SECONDS = 900; // 15 minutes
+
     public function __construct(
         private EntityManagerInterface $em,
         private ActiveSessionRepository $activeSessionRepository,
+        private CacheInterface $cache,
     ) {
     }
 
-    /**
-     * Resolves the Device tied to the current request's auth token.
-     * Adjust the token source (bearer token vs X-Device-Id header) to match
-     * however sessions are actually tracked in your auth layer.
-     */
     private function resolveCurrentDevice(Request $request, User $user): ?Device
     {
         $token = str_replace('Bearer ', '', $request->headers->get('Authorization', ''));
         $session = $this->activeSessionRepository->findOneBy(['token' => $token, 'user' => $user]);
 
         return $session?->getDevice();
+    }
+
+    private function getFailureCacheKey(User $user, Request $request): string
+    {
+        $ip = $request->getClientIp() ?? '0.0.0.0';
+
+        return 'adult_lock_fail_' . $user->getId() . '_' . $ip;
+    }
+
+    private function getFailureCount(string $cacheKey): int
+    {
+        return (int) $this->cache->get($cacheKey, function (ItemInterface $item): int {
+            $item->expiresAfter(self::LOCKOUT_SECONDS);
+
+            return 0;
+        });
+    }
+
+    private function incrementFailureCount(string $cacheKey): void
+    {
+        $count = $this->getFailureCount($cacheKey);
+        $this->cache->delete($cacheKey);
+        $this->cache->get($cacheKey, function (ItemInterface $item) use ($count): int {
+            $item->expiresAfter(self::LOCKOUT_SECONDS);
+
+            return $count + 1;
+        });
+    }
+
+    private function clearFailureCount(string $cacheKey): void
+    {
+        $this->cache->delete($cacheKey);
+    }
+
+    private function readSettings(): array
+    {
+        $path = $this->getParameter('kernel.project_dir') . '/var/settings.json';
+
+        if (!file_exists($path)) {
+            return [];
+        }
+
+        try {
+            $content = file_get_contents($path);
+            $data = json_decode((string) $content, true);
+
+            return is_array($data) ? $data : [];
+        } catch (\Throwable) {
+            return [];
+        }
     }
 
     #[Route('', methods: ['GET'])]
@@ -41,11 +94,27 @@ class AdultLockController extends AbstractController
         $user = $this->getUser();
         $device = $this->resolveCurrentDevice($request, $user);
 
+        $deviceUnlocked = $device?->isAdultContentUnlocked() ?? false;
+
+        // Auto-relock if timeout has elapsed
+        if ($deviceUnlocked && $device !== null) {
+            $settings = $this->readSettings();
+            $timeoutMinutes = (int) ($settings['adult_lock_timeout_minutes'] ?? 30);
+
+            if ($timeoutMinutes > 0 && $device->getAdultContentUnlockedAt() !== null) {
+                $elapsed = time() - $device->getAdultContentUnlockedAt()->getTimestamp();
+                if ($elapsed > ($timeoutMinutes * 60)) {
+                    $device->setAdultContentUnlocked(false);
+                    $this->em->flush();
+                    $deviceUnlocked = false;
+                }
+            }
+        }
+
         return new JsonResponse([
             'hasPassword' => $user->getAdultLockPasswordHash() !== null,
             'salt' => $user->getAdultLockSalt(),
-            // This device's own unlock state — NOT global to the account.
-            'deviceUnlocked' => $device?->isAdultContentUnlocked() ?? false,
+            'deviceUnlocked' => $deviceUnlocked,
             'deviceId' => $device?->getId(),
         ]);
     }
@@ -63,12 +132,20 @@ class AdultLockController extends AbstractController
 
         /** @var User $user */
         $user = $this->getUser();
+
+        // If a password already exists, verify the current one before allowing change
+        if ($user->getAdultLockPasswordHash() !== null) {
+            $currentPasswordHash = $data['currentPasswordHash'] ?? null;
+
+            if (!is_string($currentPasswordHash) || !hash_equals($user->getAdultLockPasswordHash(), $currentPasswordHash)) {
+                return new JsonResponse(['error' => 'Current adult lock password is incorrect.'], Response::HTTP_FORBIDDEN);
+            }
+        }
+
         $user->setAdultLockPasswordHash($passwordHash);
         $user->setAdultLockSalt($salt);
         $user->setAdultLockUpdatedAt(new \DateTimeImmutable());
 
-        // Setting a new password only unlocks the device that set it —
-        // every other device stays locked until unlocked with the new password.
         $device = $this->resolveCurrentDevice($request, $user);
         $device?->setAdultContentUnlocked(true);
 
@@ -91,13 +168,28 @@ class AdultLockController extends AbstractController
             return new JsonResponse(['valid' => false]);
         }
 
+        // Rate limiting
+        $failureKey = $this->getFailureCacheKey($user, $request);
+        $failureCount = $this->getFailureCount($failureKey);
+
+        if ($failureCount >= self::MAX_ATTEMPTS) {
+            return new JsonResponse([
+                'valid' => false,
+                'error' => 'Too many failed attempts. Please try again later.',
+                'locked' => true,
+            ], Response::HTTP_TOO_MANY_REQUESTS);
+        }
+
         $valid = hash_equals($storedHash, $passwordHash);
 
         if ($valid) {
-            // Correct password unlocks THIS device only.
+            $this->clearFailureCount($failureKey);
+
             $device = $this->resolveCurrentDevice($request, $user);
             $device?->setAdultContentUnlocked(true);
             $this->em->flush();
+        } else {
+            $this->incrementFailureCount($failureKey);
         }
 
         return new JsonResponse(['valid' => $valid]);
@@ -124,8 +216,6 @@ class AdultLockController extends AbstractController
         $user->setAdultLockSalt(null);
         $user->setAdultLockUpdatedAt(null);
 
-        // Removing the password re-locks every device account-wide —
-        // a stale unlocked flag with no password would be a bypass.
         foreach ($user->getDevices() as $device) {
             $device->setAdultContentUnlocked(false);
         }

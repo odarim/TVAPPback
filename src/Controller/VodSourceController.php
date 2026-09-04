@@ -42,11 +42,17 @@ use Symfony\Component\Routing\Annotation\Route;
 #[Route('/api/vod')]
 final class VodSourceController extends AbstractController
 {
+    private const DEFAULT_SOURCES = [
+        'enabled'          => ['alpha' => true, 'beta' => true, 'charlie' => true],
+        'disabled_servers' => [],
+    ];
+
     public function __construct(
         private readonly MediaProviderService $mediaProviderService,
         private readonly WiflixMediaService   $wiflixMediaService,
         private readonly Fs16MediaService     $fs16MediaService,
         private readonly CipherService        $cipherService,
+        private readonly string               $projectDir,
     ) {}
 
     #[Route('/sources', name: 'vod_sources', methods: ['GET'])]
@@ -99,15 +105,43 @@ final class VodSourceController extends AbstractController
             $episode = (int) $e;
         }
 
+        // ── Read source settings ────────────────────────────────────────────
+        $sourceSettings = $this->readVodSourcesSettings();
+        $enabled        = $sourceSettings['enabled'];
+        $disabledServers = array_map('strtolower', $sourceSettings['disabled_servers']);
+
         // ── Fetch from providers ─────────────────────────────────────────────
-        $wiflixSources = [];
+        $wiflixSources  = [];
         $charlieSources = [];
-        if ($titleName !== null) {
+        $betaSources    = [];
+
+        if ($titleName !== null && ($enabled['alpha'] ?? true)) {
             $wiflixSources = $this->wiflixMediaService->getSources($type, $titleName, $lang, $season, $episode);
+        }
+
+        if ($titleName !== null && ($enabled['charlie'] ?? true)) {
             $charlieSources = $this->fs16MediaService->getSources($type, $titleName, $lang, $season, $episode);
         }
 
-        $betaSources = $this->mediaProviderService->getSources($type, $tmdbId, $lang, $season, $episode);
+        if ($enabled['beta'] ?? true) {
+            $betaSources = $this->mediaProviderService->getSources($type, $tmdbId, $lang, $season, $episode);
+        }
+
+        // ── Tag server names before anonymisation ────────────────────────────
+        foreach ($wiflixSources as &$src) {
+            $src['server'] = $this->extractServerFromName($src['name'] ?? '');
+        }
+        unset($src);
+
+        foreach ($betaSources as &$src) {
+            $src['server'] = strtolower(trim($src['name'] ?? ''));
+        }
+        unset($src);
+
+        foreach ($charlieSources as &$src) {
+            $src['server'] = $this->extractServerFromName($src['name'] ?? '');
+        }
+        unset($src);
 
         // ── Anonymise names & encrypt embed URLs ─────────────────────────────
         $sources = array_merge(
@@ -115,6 +149,19 @@ final class VodSourceController extends AbstractController
             $this->anonymiseSources($betaSources,   'Beta'),
             $this->anonymiseSources($charlieSources, 'Charlie'),
         );
+
+        // ── Filter out disabled servers ──────────────────────────────────────
+        if ($disabledServers !== []) {
+            $sources = array_values(array_filter($sources, function (array $src) use ($disabledServers): bool {
+                $server = strtolower($src['server'] ?? '');
+
+                if ($server === '') {
+                    return true; // no server key — keep it
+                }
+
+                return !in_array($server, $disabledServers, true);
+            }));
+        }
 
         // ── Encrypt the entire response ──────────────────────────────────────
         $plainPayload = json_encode([
@@ -157,10 +204,11 @@ final class VodSourceController extends AbstractController
     // ─── helpers ─────────────────────────────────────────────────────────────
 
     /**
-     * Replace the provider-specific `name` with an anonymised label and
-     * encrypt each source URL into an opaque token for the embed proxy.
+     * Replace the provider-specific `name` with an anonymised label,
+     * encrypt each source URL into an opaque token for the embed proxy,
+     * and preserve the server key for disabled-server filtering.
      *
-     * @param array<int, array{url:string,name:string,language:string,tag:?string}> $sources
+     * @param array<int, array{url:string,name:string,language:string,tag:?string,server:?string}> $sources
      */
     private function anonymiseSources(array $sources, string $prefix): array
     {
@@ -169,14 +217,55 @@ final class VodSourceController extends AbstractController
         foreach ($sources as $src) {
             $encryptedToken = $this->cipherService->encrypt($src['url']);
             $out[] = [
-                'token'    => $encryptedToken,       // opaque — real URL hidden
-                'name'     => $prefix . ' ' . $n,   // e.g. "Alpha 1", "Beta 2"
+                'token'    => $encryptedToken,
+                'name'     => $prefix . ' ' . $n,
                 'language' => $src['language'] ?? 'fr',
                 'tag'      => $this->displaySourceTag($src['tag'] ?? null, $src['language'] ?? 'fr'),
+                'server'   => $src['server'] ?? null,
             ];
             $n++;
         }
         return $out;
+    }
+
+    /**
+     * Extract the server/sub-provider name from a raw source name like
+     * "Wiflix (Uqload)" or "Charlie (Vidzy)" — returns lowercase.
+     */
+    private function extractServerFromName(string $name): string
+    {
+        if (preg_match('/\(([^)]+)\)/', $name, $m)) {
+            return strtolower(trim($m[1]));
+        }
+
+        return strtolower(trim($name));
+    }
+
+    private function readVodSourcesSettings(): array
+    {
+        $path = $this->projectDir . '/var/settings.json';
+
+        if (!file_exists($path)) {
+            return self::DEFAULT_SOURCES;
+        }
+
+        try {
+            $content = file_get_contents($path);
+            $data    = json_decode((string) $content, true);
+
+            if (!is_array($data) || !isset($data['vod_sources'])) {
+                return self::DEFAULT_SOURCES;
+            }
+
+            $vod = $data['vod_sources'];
+
+            return [
+                'enabled'          => array_merge(self::DEFAULT_SOURCES['enabled'], $vod['enabled'] ?? []),
+                'disabled_servers' => $vod['disabled_servers'] ?? [],
+            ];
+        } catch (\Throwable) {
+            return self::DEFAULT_SOURCES;
+        }
     }
 
     private function displaySourceTag(?string $tag, string $language): string
